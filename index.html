@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>JB ESPETO - Gestão Cloud</title>
+    <title>JB ESPETO - Gestão Grátis</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,10 +33,8 @@
             const [idMesaAberta, setIdMesaAberta] = useState(null);
             const [carregando, setCarregando] = useState(true);
 
-            useEffect(() => { buscarDados(); }, []);
-
-            async function buscarDados() {
-                setCarregando(true);
+            // FUNÇÃO DE BUSCA (IGUAL ANTES)
+            const buscarDados = async () => {
                 try {
                     const { data: prods } = await supabaseClient.from('produtos').select('*').order('nome');
                     if (prods) setProdutos(prods);
@@ -55,39 +53,42 @@
                         });
                     }
                     setMesas(novasMesas);
-                } catch (err) { console.error(err); }
+                } catch (err) { console.error("Erro na busca:", err); }
                 setCarregando(false);
-            }
+            };
+
+            // EFEITO DE ATUALIZAÇÃO AUTOMÁTICA (POLLING) - 100% GRÁTIS
+            useEffect(() => {
+                buscarDados();
+                // O site vai atualizar sozinho a cada 5 segundos
+                const intervalo = setInterval(() => {
+                    buscarDados();
+                }, 5000); 
+
+                return () => clearInterval(intervalo);
+            }, []);
 
             async function definirApelido() {
-                const nome = prompt("Digite o nome do cliente ou apelido da mesa:");
+                const nome = prompt("Nome do cliente:");
                 if (nome !== null) {
-                    // Atualiza todos os itens dessa mesa com o novo apelido
                     await supabaseClient.from('pedidos').update({ apelido_mesa: nome }).eq('mesa', idMesaAberta);
                     buscarDados();
                 }
             }
 
             async function adicionarItem(produto) {
-                if (produto.estoque <= 0) return alert("Estoque esgotado!");
+                if (produto.estoque <= 0) return alert("Sem estoque!");
                 const mesaAtual = mesas.find(m => m.id === idMesaAberta);
-                const { error: errPedido } = await supabaseClient.from('pedidos').insert([
+                await supabaseClient.from('pedidos').insert([
                     { mesa: idMesaAberta, produto_nome: produto.nome, preco_unidade: produto.preco, apelido_mesa: mesaAtual.apelido }
                 ]);
-                const { error: errEstoque } = await supabaseClient.from('produtos').update({ estoque: produto.estoque - 1 }).eq('id', produto.id);
-                if (!errPedido && !errEstoque) buscarDados();
+                await supabaseClient.from('produtos').update({ estoque: produto.estoque - 1 }).eq('id', produto.id);
+                buscarDados();
             }
 
             async function removerItemUnico(pedidoId) {
                 await supabaseClient.from('pedidos').delete().eq('id', pedidoId);
                 buscarDados();
-            }
-
-            async function deletarProdutoEstoque(produtoId) {
-                if(confirm("Excluir este produto permanentemente?")) {
-                    await supabaseClient.from('produtos').delete().eq('id', produtoId);
-                    buscarDados();
-                }
             }
 
             async function fecharConta(mesaId) {
@@ -101,19 +102,23 @@
             async function cadastrarNovo(e) {
                 e.preventDefault();
                 const novo = { nome: e.target.nome.value, preco: parseFloat(e.target.preco.value), estoque: parseInt(e.target.estoque.value) };
-                const { error } = await supabaseClient.from('produtos').insert([novo]);
-                if (!error) { e.target.reset(); buscarDados(); alert("Salvo!"); }
+                await supabaseClient.from('produtos').insert([novo]);
+                e.target.reset();
+                buscarDados();
             }
 
-            if (carregando) return <div className="h-screen flex items-center justify-center text-orange-500 font-black animate-pulse">JB ESPETO...</div>;
+            if (carregando) return <div className="h-screen flex items-center justify-center text-orange-500 font-black italic">JB ESPETO...</div>;
 
             const mesaAbertaInfo = mesas.find(m => m.id === idMesaAberta);
 
             return (
                 <div className="min-h-screen pb-20">
                     <header className="bg-[#1e293b] p-4 shadow-xl flex justify-between items-center mb-4 sticky top-0 z-50">
-                        <h1 className="text-xl font-black text-white italic">JB <span className="text-orange-500">ESPETO</span></h1>
-                        <button onClick={buscarDados} className="bg-slate-700 p-2 rounded-xl text-lg">🔄</button>
+                        <h1 className="text-xl font-black text-white italic underline decoration-orange-500">JB ESPETO</h1>
+                        <div className="flex items-center gap-2">
+                             <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                             <span className="text-[9px] font-bold text-slate-400">SINCRO OK</span>
+                        </div>
                     </header>
 
                     <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/95 backdrop-blur-md border-t border-slate-700 p-3 flex gap-3 z-40">
@@ -125,39 +130,34 @@
                         {pagina === 'home' && (
                             <div className="grid grid-cols-2 gap-3">
                                 {mesas.map(m => (
-                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400' : 'bg-slate-800 border-slate-700'}`}>
-                                        <div className="flex justify-between items-start">
-                                            <span className="text-[10px] font-black opacity-70 uppercase tracking-tighter text-white">Mesa {m.id}</span>
-                                        </div>
-                                        <div className="text-xl font-black mt-1 text-white">R$ {m.total.toFixed(2)}</div>
-                                        {m.apelido && <div className="text-[10px] mt-1 font-bold bg-black/20 px-2 py-0.5 rounded-md truncate uppercase">{m.apelido}</div>}
+                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all ${m.total > 0 ? 'bg-orange-600 border-orange-400 shadow-md' : 'bg-slate-800 border-slate-700 opacity-60'}`}>
+                                        <div className="text-[10px] font-black text-white/50 uppercase">Mesa {m.id}</div>
+                                        <div className="text-xl font-black text-white">R$ {m.total.toFixed(2)}</div>
+                                        {m.apelido && <div className="text-[9px] mt-1 font-bold bg-black/30 px-2 py-0.5 rounded text-white truncate uppercase">{m.apelido}</div>}
                                     </div>
                                 ))}
                             </div>
                         )}
 
                         {pagina === 'estoque' && (
-                            <div className="space-y-4 animate-in slide-in-from-right">
+                            <div className="space-y-4">
                                 <form onSubmit={cadastrarNovo} className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700 space-y-3 shadow-lg">
-                                    <input name="nome" placeholder="Produto" className="w-full p-3 bg-slate-800 rounded-xl outline-none border border-slate-700 text-sm" required />
+                                    <input name="nome" placeholder="Nome" className="w-full p-3 bg-slate-800 rounded-xl outline-none border border-slate-700 text-sm" required />
                                     <div className="flex gap-2">
                                         <input name="preco" type="number" step="0.01" placeholder="R$" className="flex-1 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
                                         <input name="estoque" type="number" placeholder="Qtd" className="w-20 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
                                     </div>
-                                    <button className="w-full bg-orange-600 text-white p-3 rounded-xl font-black text-sm uppercase">Adicionar ao Cardápio</button>
+                                    <button className="w-full bg-orange-600 text-white p-3 rounded-xl font-black text-sm uppercase">Cadastrar</button>
                                 </form>
 
-                                <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-700 shadow-lg">
+                                <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-700">
                                     {produtos.map(p => (
                                         <div key={p.id} className="flex justify-between items-center py-3 border-b border-slate-800 last:border-0">
                                             <div className="flex-1 pr-2">
                                                 <div className="font-bold text-slate-200 text-sm">{p.nome}</div>
-                                                <div className="text-[10px] font-black text-orange-500">R$ {p.preco.toFixed(2)}</div>
+                                                <div className="text-[10px] font-black text-orange-500 uppercase">R$ {p.preco.toFixed(2)}</div>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className={`text-[9px] font-black px-2 py-1 rounded-lg ${p.estoque < 5 ? 'bg-red-600' : 'bg-slate-700'}`}>{p.estoque} UN</span>
-                                                <button onClick={() => deletarProdutoEstoque(p.id)} className="text-slate-500 text-lg">🗑️</button>
-                                            </div>
+                                            <div className="text-[9px] font-black px-2 py-1 rounded-lg bg-slate-700">{p.estoque} UN</div>
                                         </div>
                                     ))}
                                 </div>
@@ -170,20 +170,20 @@
                             <div className="bg-[#1e293b] w-full max-w-lg rounded-t-[32px] p-6 border-t border-slate-700 flex flex-col modal-height shadow-2xl">
                                 <div className="flex justify-between items-start mb-4">
                                     <div>
-                                        <h2 className="text-2xl font-black text-orange-500 italic">Mesa {idMesaAberta}</h2>
-                                        {mesaAbertaInfo.apelido && <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{mesaAbertaInfo.apelido}</p>}
+                                        <h2 className="text-2xl font-black text-orange-500 italic uppercase leading-none">Mesa {idMesaAberta}</h2>
+                                        {mesaAbertaInfo.apelido && <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{mesaAbertaInfo.apelido}</p>}
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={definirApelido} className="bg-slate-800 text-white px-3 py-2 rounded-xl text-[10px] font-black border border-slate-600">🏷️ APELIDO</button>
+                                        <button onClick={definirApelido} className="bg-slate-800 text-white px-3 py-2 rounded-xl text-[9px] font-black border border-slate-600 uppercase">🏷️ Apelido</button>
                                         <button onClick={() => setIdMesaAberta(null)} className="bg-slate-800 text-white w-10 h-10 rounded-full font-bold">✕</button>
                                     </div>
                                 </div>
 
-                                <div className="flex-shrink-0 mb-4 bg-slate-900/50 p-3 rounded-2xl">
+                                <div className="mb-4 bg-slate-900/50 p-3 rounded-2xl border border-slate-800">
                                     <div className="max-h-32 overflow-y-auto no-scrollbar space-y-2">
                                         {mesaAbertaInfo.itens.map((it, idx) => (
                                             <div key={idx} className="flex justify-between items-center text-xs">
-                                                <span className="text-slate-300 font-medium truncate pr-4">{it.produto_nome}</span>
+                                                <span className="text-slate-300 font-medium truncate pr-4 uppercase">{it.produto_nome}</span>
                                                 <div className="flex items-center gap-3">
                                                     <span className="text-white font-black">R${it.preco_unidade.toFixed(2)}</span>
                                                     <button onClick={() => removerItemUnico(it.id)} className="text-red-500 font-black px-1">X</button>
@@ -192,23 +192,21 @@
                                         ))}
                                     </div>
                                     <div className="border-t border-slate-800 mt-3 pt-2 text-right">
-                                        <span className="text-[10px] text-orange-500 uppercase mr-2 font-bold">Total:</span>
                                         <span className="text-2xl font-black text-white">R$ {mesaAbertaInfo.total.toFixed(2)}</span>
                                     </div>
                                 </div>
 
-                                <p className="text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest">Lançar Itens</p>
-                                <div className="flex-1 overflow-y-auto no-scrollbar grid grid-cols-2 gap-2 mb-4 pr-1">
+                                <div className="flex-1 overflow-y-auto no-scrollbar grid grid-cols-2 gap-2 mb-4">
                                     {produtos.map(p => (
-                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-3 bg-slate-800 rounded-xl border border-slate-700 active:scale-95 transition-all text-left">
-                                            <div className="font-bold text-[9px] text-slate-400 uppercase truncate leading-none">{p.nome}</div>
-                                            <div className="font-black text-white text-sm mt-1">R$ {p.preco.toFixed(2)}</div>
+                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-3 bg-slate-800 rounded-xl border border-slate-700 active:bg-orange-900/20 text-left">
+                                            <div className="font-bold text-[9px] text-slate-400 uppercase truncate mb-1">{p.nome}</div>
+                                            <div className="font-black text-white text-sm">R$ {p.preco.toFixed(2)}</div>
                                         </button>
                                     ))}
                                 </div>
 
-                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all text-xs uppercase mb-2">
-                                    PAGAMENTO REALIZADO / LIMPAR MESA
+                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black shadow-lg uppercase text-xs">
+                                    LIMPAR MESA
                                 </button>
                             </div>
                         </div>
