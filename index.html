@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Gestão Pro - Cloud</title>
+    <title>JB ESPETO - Gestão Cloud</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,22 +12,19 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
+        /* Esconde a barra de rolagem mas mantém a funcionalidade */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="bg-slate-50">
+<body class="bg-[#0f172a] text-slate-200">
     <div id="root"></div>
 
     <script type="text/babel">
-    const SUPABASE_URL = 'https://zpzjpkrglknnhoojglmv.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpwempwa3JnbGtubmhvb2pnbG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NzY4NTUsImV4cCI6MjA5MzA1Mjg1NX0.6BV3CTuBjOXraXnswNBpZoapHF_NDV7P4O1ja_cVNEY'; 
-    
-    // Forma mais segura de criar o cliente
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    const { useState, useEffect } = React;
-
-    // Teste de conexão imediato
-    console.log("Tentando conectar ao Supabase...");
+        const SUPABASE_URL = 'https://zpzjpkrglknnhoojglmv.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpwempwa3JnbGtubmhvb2pnbG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NzY4NTUsImV4cCI6MjA5MzA1Mjg1NX0.6BV3CTuBjOXraXnswNBpZoapHF_NDV7P4O1ja_cVNEY'; 
+        
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const { useState, useEffect } = React;
 
         const App = () => {
             const [mesas, setMesas] = useState(Array.from({ length: 10 }, (_, i) => ({ id: i + 1, itens: [], total: 0 })));
@@ -36,19 +33,14 @@
             const [idMesaAberta, setIdMesaAberta] = useState(null);
             const [carregando, setCarregando] = useState(true);
 
-            // Carregar dados assim que o app abrir
-            useEffect(() => {
-                buscarDados();
-            }, []);
+            useEffect(() => { buscarDados(); }, []);
 
             async function buscarDados() {
                 setCarregando(true);
                 try {
-                    // Busca Produtos
                     const { data: prods } = await supabaseClient.from('produtos').select('*').order('nome');
                     if (prods) setProdutos(prods);
 
-                    // Busca Pedidos Ativos
                     const { data: pedidos } = await supabaseClient.from('pedidos').select('*');
                     const novasMesas = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, itens: [], total: 0 }));
                     
@@ -62,29 +54,26 @@
                         });
                     }
                     setMesas(novasMesas);
-                } catch (err) {
-                    console.error("Erro na conexão:", err);
-                }
+                } catch (err) { console.error(err); }
                 setCarregando(false);
             }
 
             async function adicionarItem(produto) {
-                if (produto.estoque <= 0) return alert("Estoque insuficiente!");
-
-                // 1. Grava o pedido no banco
+                if (produto.estoque <= 0) return alert("Estoque esgotado!");
                 const { error: errPedido } = await supabaseClient.from('pedidos').insert([
                     { mesa: idMesaAberta, produto_nome: produto.nome, preco_unidade: produto.preco }
                 ]);
-
-                // 2. Diminui o estoque no banco
                 const { error: errEstoque } = await supabaseClient.from('produtos')
                     .update({ estoque: produto.estoque - 1 })
                     .eq('id', produto.id);
+                if (!errPedido && !errEstoque) buscarDados();
+            }
 
-                if (!errPedido && !errEstoque) {
-                    buscarDados(); // Recarrega para mostrar atualização
-                } else {
-                    alert("Erro ao processar venda no banco.");
+            async function fecharConta(mesaId) {
+                if(confirm(`Deseja limpar a Mesa ${mesaId}?`)) {
+                    await supabaseClient.from('pedidos').delete().eq('mesa', mesaId);
+                    setIdMesaAberta(null);
+                    buscarDados();
                 }
             }
 
@@ -96,43 +85,38 @@
                     estoque: parseInt(e.target.estoque.value)
                 };
                 const { error } = await supabaseClient.from('produtos').insert([novo]);
-                if (!error) {
-                    e.target.reset();
-                    buscarDados();
-                    alert("Produto cadastrado na nuvem!");
-                }
+                if (!error) { e.target.reset(); buscarDados(); alert("Salvo no JB Espeto!"); }
             }
 
-            async function fecharConta(mesaId) {
-                if(confirm(`Confirmar fechamento da Mesa ${mesaId}?`)) {
-                    await supabaseClient.from('pedidos').delete().eq('mesa', mesaId);
-                    setIdMesaAberta(null);
-                    buscarDados();
-                }
-            }
-
-            if (carregando) return <div className="h-screen flex flex-col items-center justify-center bg-blue-900 text-white font-bold animate-pulse text-xl">Conectando ao Supabase...</div>;
+            if (carregando) return (
+                <div className="h-screen flex flex-col items-center justify-center bg-[#0f172a]">
+                    <div className="text-3xl font-black text-orange-500 animate-pulse tracking-tighter">JB ESPETO</div>
+                    <div className="text-slate-500 text-sm mt-2">Conectando...</div>
+                </div>
+            );
 
             const mesaAtual = mesas.find(m => m.id === idMesaAberta);
 
             return (
-                <div className="min-h-screen pb-20">
-                    <header className="bg-white p-6 shadow-sm mb-6 flex justify-between items-center">
-                        <h1 className="text-xl font-black text-slate-800 tracking-tighter">SISTEMA CLOUD ☁️</h1>
-                        <button onClick={buscarDados} className="bg-slate-100 p-2 rounded-full active:rotate-180 transition-transform duration-500">🔄</button>
+                <div className="min-h-screen pb-24">
+                    {/* Header Dark */}
+                    <header className="bg-[#1e293b] p-6 shadow-xl flex justify-between items-center mb-6 border-b border-slate-700">
+                        <h1 className="text-2xl font-black text-white italic">JB <span className="text-orange-500">ESPETO</span></h1>
+                        <button onClick={buscarDados} className="bg-slate-700 p-2 rounded-full hover:bg-slate-600 transition-colors">🔄</button>
                     </header>
 
-                    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex gap-4 z-40">
-                        <button onClick={() => setPagina('home')} className={`flex-1 p-3 rounded-2xl font-bold transition-all ${pagina === 'home' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400'}`}>Mesas</button>
-                        <button onClick={() => setPagina('estoque')} className={`flex-1 p-3 rounded-2xl font-bold transition-all ${pagina === 'estoque' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400'}`}>Estoque</button>
+                    {/* Nav Dark */}
+                    <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/90 backdrop-blur-md border-t border-slate-700 p-4 flex gap-4 z-40">
+                        <button onClick={() => setPagina('home')} className={`flex-1 p-4 rounded-2xl font-black transition-all ${pagina === 'home' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/20' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
+                        <button onClick={() => setPagina('estoque')} className={`flex-1 p-4 rounded-2xl font-black transition-all ${pagina === 'estoque' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/20' : 'bg-slate-800 text-slate-500'}`}>ESTOQUE</button>
                     </nav>
 
                     <main className="px-4">
                         {pagina === 'home' && (
-                            <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-500">
+                            <div className="grid grid-cols-2 gap-4 animate-in fade-in">
                                 {mesas.map(m => (
-                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-6 rounded-3xl border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-500 border-orange-600 text-white shadow-xl shadow-orange-100' : 'bg-white border-slate-100'}`}>
-                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-60">Mesa {m.id}</div>
+                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-6 rounded-[30px] border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400 text-white shadow-2xl shadow-orange-900/40' : 'bg-slate-800 border-slate-700'}`}>
+                                        <div className="text-[10px] font-black opacity-60 uppercase tracking-widest">Mesa {m.id}</div>
                                         <div className="text-2xl font-black mt-1">R$ {m.total.toFixed(2)}</div>
                                     </div>
                                 ))}
@@ -140,27 +124,27 @@
                         )}
 
                         {pagina === 'estoque' && (
-                            <div className="space-y-6 animate-in slide-in-from-right duration-300">
-                                <form onSubmit={cadastrarNovo} className="bg-white p-6 rounded-3xl shadow-sm space-y-4">
-                                    <h2 className="font-black text-slate-800">NOVO ITEM</h2>
-                                    <input name="nome" placeholder="Nome do Produto" className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-500" required />
+                            <div className="space-y-6">
+                                <form onSubmit={cadastrarNovo} className="bg-[#1e293b] p-6 rounded-[30px] shadow-sm space-y-4 border border-slate-700">
+                                    <h2 className="font-black text-slate-400 text-xs tracking-widest uppercase">Cadastrar Item</h2>
+                                    <input name="nome" placeholder="Nome do Espeto/Bebida" className="w-full p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 focus:border-orange-500 text-white" required />
                                     <div className="flex gap-2">
-                                        <input name="preco" type="number" step="0.01" placeholder="R$ 0,00" className="flex-1 p-4 bg-slate-50 rounded-2xl" required />
-                                        <input name="estoque" type="number" placeholder="Qtd" className="flex-1 p-4 bg-slate-50 rounded-2xl" required />
+                                        <input name="preco" type="number" step="0.01" placeholder="R$" className="flex-1 p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 text-white" required />
+                                        <input name="estoque" type="number" placeholder="Qtd" className="flex-1 p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 text-white" required />
                                     </div>
-                                    <button className="w-full bg-blue-600 text-white p-4 rounded-2xl font-black shadow-lg shadow-blue-100">SALVAR NO BANCO</button>
+                                    <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black hover:bg-orange-500">SALVAR NO SISTEMA</button>
                                 </form>
 
-                                <div className="bg-white p-6 rounded-3xl shadow-sm">
-                                    <h2 className="font-black text-slate-800 mb-4 tracking-widest text-sm uppercase">Lista de Produtos</h2>
-                                    {produtos.length === 0 ? <p className="text-slate-400 italic">Nenhum item cadastrado.</p> : produtos.map(p => (
-                                        <div key={p.id} className="flex justify-between items-center py-4 border-b border-slate-50 last:border-0">
+                                <div className="bg-[#1e293b] p-6 rounded-[30px] shadow-sm border border-slate-700">
+                                    <h2 className="font-black text-slate-400 mb-4 text-xs uppercase tracking-widest">Lista de Estoque</h2>
+                                    {produtos.map(p => (
+                                        <div key={p.id} className="flex justify-between items-center py-4 border-b border-slate-800 last:border-0">
                                             <div>
-                                                <div className="font-bold text-slate-700">{p.nome}</div>
-                                                <div className="text-sm font-black text-blue-600">R$ {p.preco.toFixed(2)}</div>
+                                                <div className="font-bold text-slate-200">{p.nome}</div>
+                                                <div className="text-xs font-black text-orange-500 uppercase tracking-tighter">R$ {p.preco.toFixed(2)}</div>
                                             </div>
-                                            <div className={`font-black text-xs px-3 py-1 rounded-full ${p.estoque < 10 ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
-                                                {p.estoque} EM ESTOQUE
+                                            <div className={`font-black text-[10px] px-3 py-1 rounded-full ${p.estoque < 5 ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-700 text-slate-300'}`}>
+                                                {p.estoque} UN
                                             </div>
                                         </div>
                                     ))}
@@ -169,39 +153,42 @@
                         )}
                     </main>
 
+                    {/* Modal Dark */}
                     {idMesaAberta && (
-                        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-end justify-center p-4">
-                            <div className="bg-white w-full max-w-lg rounded-[40px] p-8 animate-in slide-in-from-bottom duration-300">
-                                <div className="flex justify-between items-center mb-8">
-                                    <h2 className="text-3xl font-black text-slate-800 tracking-tighter">Mesa {idMesaAberta}</h2>
-                                    <button onClick={() => setIdMesaAberta(null)} className="bg-slate-100 w-12 h-12 rounded-full font-bold">✕</button>
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4">
+                            <div className="bg-[#1e293b] w-full max-w-lg rounded-[40px] p-8 border-t border-slate-600 shadow-2xl animate-in slide-in-from-bottom">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-3xl font-black text-white italic">Mesa {idMesaAberta}</h2>
+                                    <button onClick={() => setIdMesaAberta(null)} className="bg-slate-700 text-white w-12 h-12 rounded-full font-bold">✕</button>
                                 </div>
 
-                                <div className="space-y-2 mb-8 max-h-48 overflow-y-auto">
+                                <div className="space-y-2 mb-6 max-h-40 overflow-y-auto no-scrollbar">
                                     {mesaAtual.itens.map((it, idx) => (
-                                        <div key={idx} className="flex justify-between font-bold text-slate-600 border-b border-slate-50 pb-2">
+                                        <div key={idx} className="flex justify-between font-bold text-slate-400 text-sm border-b border-slate-800 pb-2">
                                             <span>{it.produto_nome}</span>
-                                            <span>R$ {it.preco_unidade.toFixed(2)}</span>
+                                            <span className="text-white font-mono">R$ {it.preco_unidade.toFixed(2)}</span>
                                         </div>
                                     ))}
-                                    {mesaAtual.itens.length === 0 && <p className="text-center text-slate-300 py-4">Mesa sem pedidos</p>}
+                                    {mesaAtual.itens.length === 0 && <p className="text-center text-slate-600 py-4 italic">Nenhum pedido lançado.</p>}
                                 </div>
 
-                                <div className="text-4xl font-black text-blue-700 mb-8 text-right">
-                                    <span className="text-sm text-slate-400 font-bold uppercase mr-2 italic">Total:</span>
+                                <div className="text-5xl font-black text-orange-500 mb-8 text-right tracking-tighter">
+                                    <span className="text-[10px] text-slate-500 uppercase tracking-widest mr-2 font-normal">Total</span>
                                     R$ {mesaAtual.total.toFixed(2)}
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2 mb-6">
                                     {produtos.map(p => (
-                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-4 bg-slate-50 rounded-2xl text-left border-2 border-transparent active:border-blue-500 transition-all">
-                                            <div className="font-bold text-xs text-slate-800">{p.nome}</div>
-                                            <div className="font-black text-blue-600 text-sm">R$ {p.preco.toFixed(2)}</div>
+                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-4 bg-slate-800 rounded-2xl text-left border-2 border-transparent active:border-orange-500 transition-all">
+                                            <div className="font-bold text-[10px] text-slate-500 uppercase">{p.nome}</div>
+                                            <div className="font-black text-white text-sm">R$ {p.preco.toFixed(2)}</div>
                                         </button>
                                     ))}
                                 </div>
 
-                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-green-600 text-white p-5 rounded-3xl font-black text-xl shadow-xl shadow-green-200 active:scale-95 transition-all">FECHAR CONTA</button>
+                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white p-5 rounded-[25px] font-black shadow-lg shadow-red-900/20 active:scale-95 transition-all uppercase tracking-widest">
+                                    LIMPAR MESA / PAGAMENTO
+                                </button>
                             </div>
                         </div>
                     )}
