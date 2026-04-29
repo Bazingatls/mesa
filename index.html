@@ -18,13 +18,16 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // CONFIGURAÇÕES DO SEU PROJETO SUPABASE (JÁ INSERIDAS)
-        const SUPABASE_URL = 'https://zpzjpkrglknnhoojglmv.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpwempwa3JnbGtubmhvb2pnbG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NzY4NTUsImV4cCI6MjA5MzA1Mjg1NX0.6BV3CTuBjOXraXnswNBpZoapHF_NDV7P4O1ja_cVNEY'; 
-        
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const SUPABASE_URL = 'https://zpzjpkrglknnhoojglmv.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpwempwa3JnbGtubmhvb2pnbG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NzY4NTUsImV4cCI6MjA5MzA1Mjg1NX0.6BV3CTuBjOXraXnswNBpZoapHF_NDV7P4O1ja_cVNEY'; 
+    
+    // Forma mais segura de criar o cliente
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        const { useState, useEffect } = React;
+    const { useState, useEffect } = React;
+
+    // Teste de conexão imediato
+    console.log("Tentando conectar ao Supabase...");
 
         const App = () => {
             const [mesas, setMesas] = useState(Array.from({ length: 10 }, (_, i) => ({ id: i + 1, itens: [], total: 0 })));
