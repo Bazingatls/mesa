@@ -11,12 +11,11 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        /* Esconde a barra de rolagem mas mantém a funcionalidade */
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f1f5f9; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="bg-[#0f172a] text-slate-200">
+<body>
     <div id="root"></div>
 
     <script type="text/babel">
@@ -60,17 +59,27 @@
 
             async function adicionarItem(produto) {
                 if (produto.estoque <= 0) return alert("Estoque esgotado!");
-                const { error: errPedido } = await supabaseClient.from('pedidos').insert([
-                    { mesa: idMesaAberta, produto_nome: produto.nome, preco_unidade: produto.preco }
-                ]);
-                const { error: errEstoque } = await supabaseClient.from('produtos')
-                    .update({ estoque: produto.estoque - 1 })
-                    .eq('id', produto.id);
+                const { error: errPedido } = await supabaseClient.from('pedidos').insert([{ mesa: idMesaAberta, produto_nome: produto.nome, preco_unidade: produto.preco }]);
+                const { error: errEstoque } = await supabaseClient.from('produtos').update({ estoque: produto.estoque - 1 }).eq('id', produto.id);
                 if (!errPedido && !errEstoque) buscarDados();
             }
 
+            async function removerItemUnico(pedidoId) {
+                if(confirm("Remover este item do pedido?")) {
+                    await supabaseClient.from('pedidos').delete().eq('id', pedidoId);
+                    buscarDados();
+                }
+            }
+
+            async function deletarProdutoEstoque(produtoId) {
+                if(confirm("Excluir este produto permanentemente do sistema?")) {
+                    await supabaseClient.from('produtos').delete().eq('id', produtoId);
+                    buscarDados();
+                }
+            }
+
             async function fecharConta(mesaId) {
-                if(confirm(`Deseja limpar a Mesa ${mesaId}?`)) {
+                if(confirm(`Limpar todos os itens da Mesa ${mesaId}?`)) {
                     await supabaseClient.from('pedidos').delete().eq('mesa', mesaId);
                     setIdMesaAberta(null);
                     buscarDados();
@@ -79,19 +88,14 @@
 
             async function cadastrarNovo(e) {
                 e.preventDefault();
-                const novo = {
-                    nome: e.target.nome.value,
-                    preco: parseFloat(e.target.preco.value),
-                    estoque: parseInt(e.target.estoque.value)
-                };
+                const novo = { nome: e.target.nome.value, preco: parseFloat(e.target.preco.value), estoque: parseInt(e.target.estoque.value) };
                 const { error } = await supabaseClient.from('produtos').insert([novo]);
                 if (!error) { e.target.reset(); buscarDados(); alert("Salvo no JB Espeto!"); }
             }
 
             if (carregando) return (
-                <div className="h-screen flex flex-col items-center justify-center bg-[#0f172a]">
-                    <div className="text-3xl font-black text-orange-500 animate-pulse tracking-tighter">JB ESPETO</div>
-                    <div className="text-slate-500 text-sm mt-2">Conectando...</div>
+                <div className="h-screen flex flex-col items-center justify-center">
+                    <div className="text-3xl font-black text-orange-500 animate-pulse italic">JB ESPETO</div>
                 </div>
             );
 
@@ -99,25 +103,23 @@
 
             return (
                 <div className="min-h-screen pb-24">
-                    {/* Header Dark */}
                     <header className="bg-[#1e293b] p-6 shadow-xl flex justify-between items-center mb-6 border-b border-slate-700">
                         <h1 className="text-2xl font-black text-white italic">JB <span className="text-orange-500">ESPETO</span></h1>
-                        <button onClick={buscarDados} className="bg-slate-700 p-2 rounded-full hover:bg-slate-600 transition-colors">🔄</button>
+                        <button onClick={buscarDados} className="bg-slate-700 p-2 rounded-full">🔄</button>
                     </header>
 
-                    {/* Nav Dark */}
-                    <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/90 backdrop-blur-md border-t border-slate-700 p-4 flex gap-4 z-40">
-                        <button onClick={() => setPagina('home')} className={`flex-1 p-4 rounded-2xl font-black transition-all ${pagina === 'home' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/20' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
-                        <button onClick={() => setPagina('estoque')} className={`flex-1 p-4 rounded-2xl font-black transition-all ${pagina === 'estoque' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/20' : 'bg-slate-800 text-slate-500'}`}>ESTOQUE</button>
+                    <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/95 backdrop-blur-md border-t border-slate-700 p-4 flex gap-4 z-40">
+                        <button onClick={() => setPagina('home')} className={`flex-1 p-4 rounded-2xl font-black transition-all ${pagina === 'home' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
+                        <button onClick={() => setPagina('estoque')} className={`flex-1 p-4 rounded-2xl font-black transition-all ${pagina === 'estoque' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400'}`}>ESTOQUE</button>
                     </nav>
 
                     <main className="px-4">
                         {pagina === 'home' && (
-                            <div className="grid grid-cols-2 gap-4 animate-in fade-in">
+                            <div className="grid grid-cols-2 gap-4">
                                 {mesas.map(m => (
-                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-6 rounded-[30px] border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400 text-white shadow-2xl shadow-orange-900/40' : 'bg-slate-800 border-slate-700'}`}>
-                                        <div className="text-[10px] font-black opacity-60 uppercase tracking-widest">Mesa {m.id}</div>
-                                        <div className="text-2xl font-black mt-1">R$ {m.total.toFixed(2)}</div>
+                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-6 rounded-[30px] border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400 shadow-xl shadow-orange-900/40' : 'bg-slate-800 border-slate-700'}`}>
+                                        <div className="text-[10px] font-black opacity-60 uppercase">Mesa {m.id}</div>
+                                        <div className="text-2xl font-black mt-1 text-white">R$ {m.total.toFixed(2)}</div>
                                     </div>
                                 ))}
                             </div>
@@ -125,26 +127,27 @@
 
                         {pagina === 'estoque' && (
                             <div className="space-y-6">
-                                <form onSubmit={cadastrarNovo} className="bg-[#1e293b] p-6 rounded-[30px] shadow-sm space-y-4 border border-slate-700">
-                                    <h2 className="font-black text-slate-400 text-xs tracking-widest uppercase">Cadastrar Item</h2>
-                                    <input name="nome" placeholder="Nome do Espeto/Bebida" className="w-full p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 focus:border-orange-500 text-white" required />
+                                <form onSubmit={cadastrarNovo} className="bg-[#1e293b] p-6 rounded-[30px] border border-slate-700 space-y-4">
+                                    <h2 className="font-black text-slate-400 text-[10px] uppercase tracking-widest">Novo Item</h2>
+                                    <input name="nome" placeholder="Ex: Espeto de Carne" className="w-full p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 text-white" required />
                                     <div className="flex gap-2">
-                                        <input name="preco" type="number" step="0.01" placeholder="R$" className="flex-1 p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 text-white" required />
+                                        <input name="preco" type="number" step="0.01" placeholder="Preço" className="flex-1 p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 text-white" required />
                                         <input name="estoque" type="number" placeholder="Qtd" className="flex-1 p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 text-white" required />
                                     </div>
-                                    <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black hover:bg-orange-500">SALVAR NO SISTEMA</button>
+                                    <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black">ADICIONAR</button>
                                 </form>
 
-                                <div className="bg-[#1e293b] p-6 rounded-[30px] shadow-sm border border-slate-700">
-                                    <h2 className="font-black text-slate-400 mb-4 text-xs uppercase tracking-widest">Lista de Estoque</h2>
+                                <div className="bg-[#1e293b] p-6 rounded-[30px] border border-slate-700">
+                                    <h2 className="font-black text-slate-400 mb-4 text-[10px] uppercase tracking-widest">Estoque Atual</h2>
                                     {produtos.map(p => (
                                         <div key={p.id} className="flex justify-between items-center py-4 border-b border-slate-800 last:border-0">
                                             <div>
                                                 <div className="font-bold text-slate-200">{p.nome}</div>
-                                                <div className="text-xs font-black text-orange-500 uppercase tracking-tighter">R$ {p.preco.toFixed(2)}</div>
+                                                <div className="text-xs font-black text-orange-500 uppercase">R$ {p.preco.toFixed(2)}</div>
                                             </div>
-                                            <div className={`font-black text-[10px] px-3 py-1 rounded-full ${p.estoque < 5 ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-700 text-slate-300'}`}>
-                                                {p.estoque} UN
+                                            <div className="flex items-center gap-3">
+                                                <div className={`font-black text-[10px] px-3 py-1 rounded-full ${p.estoque < 5 ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{p.estoque} UN</div>
+                                                <button onClick={() => deletarProdutoEstoque(p.id)} className="text-slate-500 hover:text-red-500 p-1">🗑️</button>
                                             </div>
                                         </div>
                                     ))}
@@ -153,40 +156,38 @@
                         )}
                     </main>
 
-                    {/* Modal Dark */}
                     {idMesaAberta && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4">
-                            <div className="bg-[#1e293b] w-full max-w-lg rounded-[40px] p-8 border-t border-slate-600 shadow-2xl animate-in slide-in-from-bottom">
+                            <div className="bg-[#1e293b] w-full max-w-lg rounded-[40px] p-8 border-t border-slate-600 animate-in slide-in-from-bottom">
                                 <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-3xl font-black text-white italic">Mesa {idMesaAberta}</h2>
+                                    <h2 className="text-3xl font-black text-white italic tracking-tighter text-orange-500">Mesa {idMesaAberta}</h2>
                                     <button onClick={() => setIdMesaAberta(null)} className="bg-slate-700 text-white w-12 h-12 rounded-full font-bold">✕</button>
                                 </div>
 
-                                <div className="space-y-2 mb-6 max-h-40 overflow-y-auto no-scrollbar">
+                                <div className="space-y-3 mb-6 max-h-40 overflow-y-auto no-scrollbar">
                                     {mesaAtual.itens.map((it, idx) => (
-                                        <div key={idx} className="flex justify-between font-bold text-slate-400 text-sm border-b border-slate-800 pb-2">
-                                            <span>{it.produto_nome}</span>
-                                            <span className="text-white font-mono">R$ {it.preco_unidade.toFixed(2)}</span>
+                                        <div key={idx} className="flex justify-between items-center bg-slate-800/50 p-2 rounded-xl">
+                                            <span className="text-slate-300 text-sm font-bold">{it.produto_nome} - R$ {it.preco_unidade.toFixed(2)}</span>
+                                            <button onClick={() => removerItemUnico(it.id)} className="bg-red-900/30 text-red-500 px-2 py-1 rounded-lg text-xs font-black">REMOVER</button>
                                         </div>
                                     ))}
-                                    {mesaAtual.itens.length === 0 && <p className="text-center text-slate-600 py-4 italic">Nenhum pedido lançado.</p>}
                                 </div>
 
-                                <div className="text-5xl font-black text-orange-500 mb-8 text-right tracking-tighter">
-                                    <span className="text-[10px] text-slate-500 uppercase tracking-widest mr-2 font-normal">Total</span>
+                                <div className="text-5xl font-black text-white mb-8 text-right tracking-tighter">
+                                    <span className="text-[10px] text-orange-500 uppercase tracking-widest mr-2 font-normal">Total</span>
                                     R$ {mesaAtual.total.toFixed(2)}
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2 mb-6">
                                     {produtos.map(p => (
-                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-4 bg-slate-800 rounded-2xl text-left border-2 border-transparent active:border-orange-500 transition-all">
+                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-4 bg-slate-800 rounded-2xl text-left border border-slate-700 active:border-orange-500 transition-all">
                                             <div className="font-bold text-[10px] text-slate-500 uppercase">{p.nome}</div>
                                             <div className="font-black text-white text-sm">R$ {p.preco.toFixed(2)}</div>
                                         </button>
                                     ))}
                                 </div>
 
-                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white p-5 rounded-[25px] font-black shadow-lg shadow-red-900/20 active:scale-95 transition-all uppercase tracking-widest">
+                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white p-5 rounded-[25px] font-black shadow-lg shadow-red-900/20 active:scale-95 transition-all uppercase tracking-widest text-sm">
                                     LIMPAR MESA / PAGAMENTO
                                 </button>
                             </div>
