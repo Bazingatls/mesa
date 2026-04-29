@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>JB ESPETO - Gestão de Estoque</title>
+    <title>JB ESPETO - Gestão Profissional</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -15,8 +15,8 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .modal-height { max-height: 90vh; }
         @keyframes pulse-red {
-            0%, 100% { background-color: #991b1b; }
-            50% { background-color: #ef4444; }
+            0%, 100% { background-color: #991b1b; border-color: #f87171; }
+            50% { background-color: #ef4444; border-color: #ffffff; }
         }
         .animate-alert { animation: pulse-red 1.5s infinite; }
     </style>
@@ -32,20 +32,53 @@
         const { useState, useEffect } = React;
 
         const App = () => {
+            const [logado, setLogado] = useState(false);
             const [mesas, setMesas] = useState(Array.from({ length: 12 }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' })));
             const [produtos, setProdutos] = useState([]);
             const [pagina, setPagina] = useState('home');
             const [idMesaAberta, setIdMesaAberta] = useState(null);
             const [carregando, setCarregando] = useState(true);
 
+            // --- LISTA DE UTILIZADORES PERMITIDOS ---
+            const USUARIOS_PERMITIDOS = [
+                { user: "bazinga", pass: "bazingatls" },
+                { user: "bruno", pass: "cajado" },
+                { user: "teta", pass: "teta" }
+            ];
+
+            useEffect(() => {
+                const sessao = localStorage.getItem('jb_sessao');
+                if (sessao === 'ativa') setLogado(true);
+                buscarDados();
+                const intervalo = setInterval(buscarDados, 5000); // Atualiza a cada 5 segundos
+                return () => clearInterval(intervalo);
+            }, []);
+
+            const fazerLogin = (e) => {
+                e.preventDefault();
+                const uDigitado = e.target.user.value;
+                const pDigitada = e.target.pass.value;
+                const encontrado = USUARIOS_PERMITIDOS.find(u => u.user === uDigitado && u.pass === pDigitada);
+
+                if (encontrado) {
+                    setLogado(true);
+                    localStorage.setItem('jb_sessao', 'ativa');
+                } else {
+                    alert("Acesso negado! Utilizador ou senha incorretos.");
+                }
+            };
+
+            const sair = () => {
+                localStorage.removeItem('jb_sessao');
+                setLogado(false);
+            };
+
             const buscarDados = async () => {
                 try {
                     const { data: prods } = await supabaseClient.from('produtos').select('*').order('nome');
                     if (prods) setProdutos(prods);
-
                     const { data: pedidos } = await supabaseClient.from('pedidos').select('*');
                     const novasMesas = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' }));
-                    
                     if (pedidos) {
                         pedidos.forEach(p => {
                             const mIndex = p.mesa - 1;
@@ -61,12 +94,6 @@
                 setCarregando(false);
             };
 
-            useEffect(() => {
-                buscarDados();
-                const intervalo = setInterval(buscarDados, 5000);
-                return () => clearInterval(intervalo);
-            }, []);
-
             async function atualizarEstoqueManual(id, novaQtd) {
                 const qtd = parseInt(novaQtd);
                 if (isNaN(qtd)) return;
@@ -74,8 +101,15 @@
                 buscarDados();
             }
 
+            async function deletarProduto(id, nome) {
+                if (confirm(`Deseja mesmo eliminar o produto "${nome}"?`)) {
+                    await supabaseClient.from('produtos').delete().eq('id', id);
+                    buscarDados();
+                }
+            }
+
             async function definirApelido() {
-                const nome = prompt("Nome do cliente:");
+                const nome = prompt("Nome do cliente na mesa:");
                 if (nome !== null) {
                     await supabaseClient.from('pedidos').update({ apelido_mesa: nome }).eq('mesa', idMesaAberta);
                     buscarDados();
@@ -83,11 +117,9 @@
             }
 
             async function adicionarItem(produto) {
-                if (produto.estoque <= 0) return alert("Estoque esgotado!");
+                if (produto.estoque <= 0) return alert("Produto sem stock!");
                 const mesaAtual = mesas.find(m => m.id === idMesaAberta);
-                await supabaseClient.from('pedidos').insert([
-                    { mesa: idMesaAberta, produto_nome: produto.nome, preco_unidade: produto.preco, apelido_mesa: mesaAtual.apelido }
-                ]);
+                await supabaseClient.from('pedidos').insert([{ mesa: idMesaAberta, produto_nome: produto.nome, preco_unidade: produto.preco, apelido_mesa: mesaAtual.apelido }]);
                 await supabaseClient.from('produtos').update({ estoque: produto.estoque - 1 }).eq('id', produto.id);
                 buscarDados();
             }
@@ -98,7 +130,7 @@
             }
 
             async function fecharConta(mesaId) {
-                if(confirm(`Limpar Mesa ${mesaId}?`)) {
+                if(confirm(`Fechar e Limpar Mesa ${mesaId}?`)) {
                     await supabaseClient.from('pedidos').delete().eq('mesa', mesaId);
                     setIdMesaAberta(null);
                     buscarDados();
@@ -113,7 +145,25 @@
                 buscarDados();
             }
 
-            if (carregando) return <div className="h-screen flex items-center justify-center text-orange-500 font-black italic">JB ESPETO...</div>;
+            if (!logado) {
+                return (
+                    <div className="h-screen flex items-center justify-center p-6 bg-slate-950">
+                        <form onSubmit={fazerLogin} className="w-full max-w-sm bg-slate-900 p-8 rounded-[40px] border border-slate-800 shadow-2xl">
+                            <div className="text-center mb-8">
+                                <h1 className="text-4xl font-black text-white italic underline decoration-orange-500 underline-offset-8">JB ESPETO</h1>
+                                <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mt-5">Acesso Restrito</p>
+                            </div>
+                            <div className="space-y-4">
+                                <input name="user" type="text" placeholder="Utilizador" className="w-full p-4 bg-slate-800 rounded-2xl border border-slate-700 outline-none focus:border-orange-500 text-white font-bold" required />
+                                <input name="pass" type="password" placeholder="Senha" className="w-full p-4 bg-slate-800 rounded-2xl border border-slate-700 outline-none focus:border-orange-500 text-white font-bold" required />
+                                <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black uppercase shadow-lg active:scale-95 transition-all mt-2">Entrar no Sistema</button>
+                            </div>
+                        </form>
+                    </div>
+                );
+            }
+
+            if (carregando) return <div className="h-screen flex items-center justify-center text-orange-500 font-black animate-pulse italic text-2xl">JB ESPETO...</div>;
 
             const mesaAbertaInfo = mesas.find(m => m.id === idMesaAberta);
 
@@ -121,10 +171,7 @@
                 <div className="min-h-screen pb-20">
                     <header className="bg-[#1e293b] p-4 shadow-xl flex justify-between items-center mb-4 sticky top-0 z-50 border-b border-slate-700">
                         <h1 className="text-xl font-black text-white italic">JB <span className="text-orange-500">ESPETO</span></h1>
-                        <div className="flex items-center gap-2">
-                             <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                             <span className="text-[9px] font-bold text-slate-400">NUVEM OK</span>
-                        </div>
+                        <button onClick={sair} className="text-[10px] font-black text-red-500 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg uppercase">Sair</button>
                     </header>
 
                     <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/95 backdrop-blur-md border-t border-slate-700 p-3 flex gap-3 z-40">
@@ -148,33 +195,25 @@
                         {pagina === 'estoque' && (
                             <div className="space-y-4">
                                 <form onSubmit={cadastrarNovo} className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700 space-y-3 shadow-lg">
-                                    <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Cadastrar Novo Produto</h2>
-                                    <input name="nome" placeholder="Ex: Espeto de Kafta" className="w-full p-3 bg-slate-800 rounded-xl outline-none border border-slate-700 text-sm" required />
+                                    <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Novo Produto</h2>
+                                    <input name="nome" placeholder="Nome" className="w-full p-3 bg-slate-800 rounded-xl outline-none border border-slate-700 text-sm" required />
                                     <div className="flex gap-2">
-                                        <input name="preco" type="number" step="0.01" placeholder="R$" className="flex-1 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
-                                        <input name="estoque" type="number" placeholder="Qtd" className="w-20 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
+                                        <input name="preco" type="number" step="0.01" placeholder="R$ Preço" className="flex-1 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
+                                        <input name="estoque" type="number" placeholder="Stock" className="w-20 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
                                     </div>
-                                    <button className="w-full bg-orange-600 text-white p-3 rounded-xl font-black text-sm uppercase">Adicionar</button>
+                                    <button className="w-full bg-orange-600 text-white p-3 rounded-xl font-black text-sm uppercase">Adicionar ao Cardápio</button>
                                 </form>
-
                                 <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-700 shadow-lg">
-                                    <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Gerenciar Estoque</h2>
+                                    <h2 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-wider">Gestão de Stock</h2>
                                     {produtos.map(p => (
                                         <div key={p.id} className="flex justify-between items-center py-4 border-b border-slate-800 last:border-0">
                                             <div className="flex-1 pr-2">
-                                                <div className="font-bold text-slate-200 text-sm">{p.nome}</div>
+                                                <div className="font-bold text-slate-200 text-sm uppercase truncate">{p.nome}</div>
                                                 <div className="text-[10px] font-black text-orange-500 uppercase">R$ {p.preco.toFixed(2)}</div>
                                             </div>
-                                            
-                                            <div className="flex items-center gap-2">
-                                                {/* CAMPO PARA ATUALIZAR QTD */}
-                                                <input 
-                                                    type="number" 
-                                                    defaultValue={p.estoque} 
-                                                    onBlur={(e) => atualizarEstoqueManual(p.id, e.target.value)}
-                                                    className={`w-14 p-2 text-center rounded-lg font-black text-xs border-2 ${p.estoque <= 5 ? 'animate-alert border-white text-white' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
-                                                />
-                                                <span className="text-[9px] font-bold text-slate-500 uppercase">UN</span>
+                                            <div className="flex items-center gap-3">
+                                                <input type="number" defaultValue={p.estoque} onBlur={(e) => atualizarEstoqueManual(p.id, e.target.value)} className={`w-12 p-2 text-center rounded-lg font-black text-xs border-2 ${p.estoque <= 5 ? 'animate-alert border-white text-white' : 'bg-slate-800 border-slate-700 text-slate-300'}`} />
+                                                <button onClick={() => deletarProduto(p.id, p.nome)} className="bg-red-900/20 p-2 rounded-lg text-red-500 text-sm active:scale-75 transition-all">🗑️</button>
                                             </div>
                                         </div>
                                     ))}
@@ -192,11 +231,10 @@
                                         {mesaAbertaInfo.apelido && <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{mesaAbertaInfo.apelido}</p>}
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={definirApelido} className="bg-slate-800 text-white px-3 py-2 rounded-xl text-[9px] font-black border border-slate-600 uppercase">🏷️ Apelido</button>
+                                        <button onClick={definirApelido} className="bg-slate-800 text-white px-3 py-2 rounded-xl text-[9px] font-black border border-slate-600 uppercase">🏷️ Nome</button>
                                         <button onClick={() => setIdMesaAberta(null)} className="bg-slate-800 text-white w-10 h-10 rounded-full font-bold">✕</button>
                                     </div>
                                 </div>
-
                                 <div className="mb-4 bg-slate-900/50 p-3 rounded-2xl border border-slate-800">
                                     <div className="max-h-32 overflow-y-auto no-scrollbar space-y-2">
                                         {mesaAbertaInfo.itens.map((it, idx) => (
@@ -213,29 +251,9 @@
                                         <span className="text-2xl font-black text-white">R$ {mesaAbertaInfo.total.toFixed(2)}</span>
                                     </div>
                                 </div>
-
                                 <div className="flex-1 overflow-y-auto no-scrollbar grid grid-cols-2 gap-2 mb-4">
                                     {produtos.map(p => (
-                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-3 bg-slate-800 rounded-xl border border-slate-700 active:bg-orange-900/20 text-left">
+                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-3 bg-slate-800 rounded-xl border border-slate-700 text-left active:scale-95 transition-all">
                                             <div className="font-bold text-[9px] text-slate-400 uppercase truncate mb-1">{p.nome}</div>
                                             <div className="font-black text-white text-sm">R$ {p.preco.toFixed(2)}</div>
-                                            <div className={`text-[8px] font-bold mt-1 ${p.estoque <= 5 ? 'text-red-500 animate-pulse' : 'text-slate-500'}`}>Estoque: {p.estoque}</div>
-                                        </button>
-                                    ))}
-                                </div>
-
-                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black shadow-lg uppercase text-xs">
-                                    FECHAR MESA
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+                                            <div className={`text-[8px] font-black mt-1 ${p.estoque <= 5 ? 'text-red-5
