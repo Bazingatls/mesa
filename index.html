@@ -13,8 +13,7 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f1f5f9; overflow-x: hidden; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        /* Ajuste para altura total no celular */
-        .modal-height { max-height: 85vh; }
+        .modal-height { max-height: 90vh; }
     </style>
 </head>
 <body>
@@ -28,7 +27,7 @@
         const { useState, useEffect } = React;
 
         const App = () => {
-            const [mesas, setMesas] = useState(Array.from({ length: 10 }, (_, i) => ({ id: i + 1, itens: [], total: 0 })));
+            const [mesas, setMesas] = useState(Array.from({ length: 12 }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' })));
             const [produtos, setProdutos] = useState([]);
             const [pagina, setPagina] = useState('home');
             const [idMesaAberta, setIdMesaAberta] = useState(null);
@@ -43,7 +42,7 @@
                     if (prods) setProdutos(prods);
 
                     const { data: pedidos } = await supabaseClient.from('pedidos').select('*');
-                    const novasMesas = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, itens: [], total: 0 }));
+                    const novasMesas = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' }));
                     
                     if (pedidos) {
                         pedidos.forEach(p => {
@@ -51,6 +50,7 @@
                             if (novasMesas[mIndex]) {
                                 novasMesas[mIndex].itens.push(p);
                                 novasMesas[mIndex].total += p.preco_unidade;
+                                if (p.apelido_mesa) novasMesas[mIndex].apelido = p.apelido_mesa;
                             }
                         });
                     }
@@ -59,9 +59,21 @@
                 setCarregando(false);
             }
 
+            async function definirApelido() {
+                const nome = prompt("Digite o nome do cliente ou apelido da mesa:");
+                if (nome !== null) {
+                    // Atualiza todos os itens dessa mesa com o novo apelido
+                    await supabaseClient.from('pedidos').update({ apelido_mesa: nome }).eq('mesa', idMesaAberta);
+                    buscarDados();
+                }
+            }
+
             async function adicionarItem(produto) {
                 if (produto.estoque <= 0) return alert("Estoque esgotado!");
-                const { error: errPedido } = await supabaseClient.from('pedidos').insert([{ mesa: idMesaAberta, produto_nome: produto.nome, preco_unidade: produto.preco }]);
+                const mesaAtual = mesas.find(m => m.id === idMesaAberta);
+                const { error: errPedido } = await supabaseClient.from('pedidos').insert([
+                    { mesa: idMesaAberta, produto_nome: produto.nome, preco_unidade: produto.preco, apelido_mesa: mesaAtual.apelido }
+                ]);
                 const { error: errEstoque } = await supabaseClient.from('produtos').update({ estoque: produto.estoque - 1 }).eq('id', produto.id);
                 if (!errPedido && !errEstoque) buscarDados();
             }
@@ -93,24 +105,20 @@
                 if (!error) { e.target.reset(); buscarDados(); alert("Salvo!"); }
             }
 
-            if (carregando) return (
-                <div className="h-screen flex flex-col items-center justify-center">
-                    <div className="text-3xl font-black text-orange-500 animate-pulse italic">JB ESPETO</div>
-                </div>
-            );
+            if (carregando) return <div className="h-screen flex items-center justify-center text-orange-500 font-black animate-pulse">JB ESPETO...</div>;
 
-            const mesaAtual = mesas.find(m => m.id === idMesaAberta);
+            const mesaAbertaInfo = mesas.find(m => m.id === idMesaAberta);
 
             return (
                 <div className="min-h-screen pb-20">
-                    <header className="bg-[#1e293b] p-4 shadow-xl flex justify-between items-center mb-4 border-b border-slate-700 sticky top-0 z-50">
-                        <h1 className="text-xl font-black text-white italic tracking-tighter">JB <span className="text-orange-500 uppercase">Espeto</span></h1>
+                    <header className="bg-[#1e293b] p-4 shadow-xl flex justify-between items-center mb-4 sticky top-0 z-50">
+                        <h1 className="text-xl font-black text-white italic">JB <span className="text-orange-500">ESPETO</span></h1>
                         <button onClick={buscarDados} className="bg-slate-700 p-2 rounded-xl text-lg">🔄</button>
                     </header>
 
                     <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/95 backdrop-blur-md border-t border-slate-700 p-3 flex gap-3 z-40">
-                        <button onClick={() => setPagina('home')} className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${pagina === 'home' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
-                        <button onClick={() => setPagina('estoque')} className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${pagina === 'estoque' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400'}`}>ESTOQUE</button>
+                        <button onClick={() => setPagina('home')} className={`flex-1 py-3 rounded-xl font-black text-xs ${pagina === 'home' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
+                        <button onClick={() => setPagina('estoque')} className={`flex-1 py-3 rounded-xl font-black text-xs ${pagina === 'estoque' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400'}`}>ESTOQUE</button>
                     </nav>
 
                     <main className="px-3">
@@ -118,33 +126,35 @@
                             <div className="grid grid-cols-2 gap-3">
                                 {mesas.map(m => (
                                     <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400' : 'bg-slate-800 border-slate-700'}`}>
-                                        <div className="text-[9px] font-black opacity-70 uppercase tracking-tighter">Mesa {m.id}</div>
+                                        <div className="flex justify-between items-start">
+                                            <span className="text-[10px] font-black opacity-70 uppercase tracking-tighter text-white">Mesa {m.id}</span>
+                                        </div>
                                         <div className="text-xl font-black mt-1 text-white">R$ {m.total.toFixed(2)}</div>
+                                        {m.apelido && <div className="text-[10px] mt-1 font-bold bg-black/20 px-2 py-0.5 rounded-md truncate uppercase">{m.apelido}</div>}
                                     </div>
                                 ))}
                             </div>
                         )}
 
                         {pagina === 'estoque' && (
-                            <div className="space-y-4">
-                                <form onSubmit={cadastrarNovo} className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700 space-y-3">
-                                    <h2 className="font-black text-slate-400 text-[9px] uppercase tracking-widest text-center">Cadastrar Item</h2>
+                            <div className="space-y-4 animate-in slide-in-from-right">
+                                <form onSubmit={cadastrarNovo} className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700 space-y-3 shadow-lg">
                                     <input name="nome" placeholder="Produto" className="w-full p-3 bg-slate-800 rounded-xl outline-none border border-slate-700 text-sm" required />
                                     <div className="flex gap-2">
-                                        <input name="preco" type="number" step="0.01" placeholder="Preço" className="flex-1 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
-                                        <input name="estoque" type="number" placeholder="Est" className="w-20 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
+                                        <input name="preco" type="number" step="0.01" placeholder="R$" className="flex-1 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
+                                        <input name="estoque" type="number" placeholder="Qtd" className="w-20 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
                                     </div>
-                                    <button className="w-full bg-orange-600 text-white p-3 rounded-xl font-black text-sm uppercase">Adicionar</button>
+                                    <button className="w-full bg-orange-600 text-white p-3 rounded-xl font-black text-sm uppercase">Adicionar ao Cardápio</button>
                                 </form>
 
-                                <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-700">
+                                <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-700 shadow-lg">
                                     {produtos.map(p => (
                                         <div key={p.id} className="flex justify-between items-center py-3 border-b border-slate-800 last:border-0">
-                                            <div className="flex-1">
+                                            <div className="flex-1 pr-2">
                                                 <div className="font-bold text-slate-200 text-sm">{p.nome}</div>
                                                 <div className="text-[10px] font-black text-orange-500">R$ {p.preco.toFixed(2)}</div>
                                             </div>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-3">
                                                 <span className={`text-[9px] font-black px-2 py-1 rounded-lg ${p.estoque < 5 ? 'bg-red-600' : 'bg-slate-700'}`}>{p.estoque} UN</span>
                                                 <button onClick={() => deletarProdutoEstoque(p.id)} className="text-slate-500 text-lg">🗑️</button>
                                             </div>
@@ -156,48 +166,49 @@
                     </main>
 
                     {idMesaAberta && (
-                        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                            <div className="bg-[#1e293b] w-full max-w-lg rounded-t-[32px] sm:rounded-[32px] p-6 border-t border-slate-700 flex flex-col modal-height">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-2xl font-black text-orange-500 italic">Mesa {idMesaAberta}</h2>
-                                    <button onClick={() => setIdMesaAberta(null)} className="bg-slate-800 text-white w-10 h-10 rounded-full font-bold">✕</button>
-                                </div>
-
-                                {/* LISTA DE ITENS LANÇADOS COM SCROLL */}
-                                <div className="flex-shrink-0 mb-2">
-                                    <p className="text-[10px] font-black text-slate-500 uppercase mb-2">Itens na Mesa</p>
-                                    <div className="max-h-32 overflow-y-auto no-scrollbar space-y-1 bg-slate-900/50 p-2 rounded-xl">
-                                        {mesaAtual.itens.map((it, idx) => (
-                                            <div key={idx} className="flex justify-between items-center py-1">
-                                                <span className="text-slate-300 text-xs font-bold truncate pr-2">{it.produto_nome}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-white font-bold text-xs">R${it.preco_unidade.toFixed(2)}</span>
-                                                    <button onClick={() => removerItemUnico(it.id)} className="text-red-500 font-black text-xs px-1">X</button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {mesaAtual.itens.length === 0 && <p className="text-[10px] text-slate-600 text-center py-2">Mesa vazia</p>}
+                        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-end justify-center">
+                            <div className="bg-[#1e293b] w-full max-w-lg rounded-t-[32px] p-6 border-t border-slate-700 flex flex-col modal-height shadow-2xl">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h2 className="text-2xl font-black text-orange-500 italic">Mesa {idMesaAberta}</h2>
+                                        {mesaAbertaInfo.apelido && <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{mesaAbertaInfo.apelido}</p>}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={definirApelido} className="bg-slate-800 text-white px-3 py-2 rounded-xl text-[10px] font-black border border-slate-600">🏷️ APELIDO</button>
+                                        <button onClick={() => setIdMesaAberta(null)} className="bg-slate-800 text-white w-10 h-10 rounded-full font-bold">✕</button>
                                     </div>
                                 </div>
 
-                                <div className="text-3xl font-black text-white text-right mb-4">
-                                    <span className="text-[10px] text-orange-500 uppercase mr-2">Total:</span>
-                                    R$ {mesaAtual.total.toFixed(2)}
+                                <div className="flex-shrink-0 mb-4 bg-slate-900/50 p-3 rounded-2xl">
+                                    <div className="max-h-32 overflow-y-auto no-scrollbar space-y-2">
+                                        {mesaAbertaInfo.itens.map((it, idx) => (
+                                            <div key={idx} className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-300 font-medium truncate pr-4">{it.produto_nome}</span>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-white font-black">R${it.preco_unidade.toFixed(2)}</span>
+                                                    <button onClick={() => removerItemUnico(it.id)} className="text-red-500 font-black px-1">X</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="border-t border-slate-800 mt-3 pt-2 text-right">
+                                        <span className="text-[10px] text-orange-500 uppercase mr-2 font-bold">Total:</span>
+                                        <span className="text-2xl font-black text-white">R$ {mesaAbertaInfo.total.toFixed(2)}</span>
+                                    </div>
                                 </div>
 
-                                {/* BOTÕES DE ADICIONAR EM DUAS COLUNAS COM SCROLL */}
-                                <p className="text-[10px] font-black text-slate-500 uppercase mb-2">Lançar Novo Item</p>
+                                <p className="text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest">Lançar Itens</p>
                                 <div className="flex-1 overflow-y-auto no-scrollbar grid grid-cols-2 gap-2 mb-4 pr-1">
                                     {produtos.map(p => (
-                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-3 bg-slate-800 rounded-xl border border-slate-700 active:bg-orange-900/20 active:border-orange-500 transition-all text-left">
-                                            <div className="font-bold text-[9px] text-slate-400 uppercase truncate">{p.nome}</div>
-                                            <div className="font-black text-white text-xs">R$ {p.preco.toFixed(2)}</div>
+                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-3 bg-slate-800 rounded-xl border border-slate-700 active:scale-95 transition-all text-left">
+                                            <div className="font-bold text-[9px] text-slate-400 uppercase truncate leading-none">{p.nome}</div>
+                                            <div className="font-black text-white text-sm mt-1">R$ {p.preco.toFixed(2)}</div>
                                         </button>
                                     ))}
                                 </div>
 
-                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white p-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all text-xs uppercase mb-2">
-                                    FECHAR CONTA / LIMPAR
+                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all text-xs uppercase mb-2">
+                                    PAGAMENTO REALIZADO / LIMPAR MESA
                                 </button>
                             </div>
                         </div>
