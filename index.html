@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciador de Mesas</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        const MesaApp = () => {
+            const [mesas, setMesas] = useState(Array.from({ length: 10 }, (_, i) => ({ id: i + 1, itens: [], total: 0 })));
+            const [produtos, setProdutos] = useState([
+                { id: 1, nome: 'Cerveja 600ml', preco: 12.50, estoque: 20, min: 5 },
+                { id: 2, nome: 'Água s/ Gás', preco: 4.00, estoque: 3, min: 5 }
+            ]);
+            const [pagina, setPagina] = useState('home');
+            const [mesaSelecionada, setMesaSelecionada] = useState(null);
+
+            const adicionarProduto = (e) => {
+                e.preventDefault();
+                const novo = {
+                    id: Date.now(),
+                    nome: e.target.nome.value,
+                    preco: parseFloat(e.target.preco.value),
+                    estoque: parseInt(e.target.estoque.value),
+                    min: 5
+                };
+                setProdutos([...produtos, novo]);
+                e.target.reset();
+                alert("Cadastrado!");
+            };
+
+            const excluirProdutoGlobal = (id) => {
+                if(confirm("Excluir produto definitivamente?")) setProdutos(produtos.filter(p => p.id !== id));
+            };
+
+            const adicionarItemAMesa = (produtoId) => {
+                const prod = produtos.find(p => p.id === produtoId);
+                if (prod.estoque <= 0) return alert("Estoque esgotado!");
+
+                setMesas(mesas.map(m => {
+                    if (m.id === mesaSelecionada.id) {
+                        const novosItens = [...m.itens, { ...prod, uniqueId: Date.now() }];
+                        return { ...m, itens: novosItens, total: m.total + prod.preco };
+                    }
+                    return m;
+                }));
+
+                setProdutos(produtos.map(p => p.id === produtoId ? { ...p, estoque: p.estoque - 1 } : p));
+            };
+
+            const removerItemDaMesa = (uniqueId, produtoId, preco) => {
+                setMesas(mesas.map(m => {
+                    if (m.id === mesaSelecionada.id) {
+                        const novosItens = m.itens.filter(item => item.uniqueId !== uniqueId);
+                        return { ...m, itens: novosItens, total: m.total - preco };
+                    }
+                    return m;
+                }));
+                setProdutos(produtos.map(p => p.id === produtoId ? { ...p, estoque: p.estoque + 1 } : p));
+            };
+
+            const fecharMesa = (id) => {
+                setMesas(mesas.map(m => m.id === id ? { ...m, itens: [], total: 0 } : m));
+                setMesaSelecionada(null);
+            };
+
+            const itensBaixos = produtos.filter(p => p.estoque <= p.min);
+
+            return (
+                <div className="min-h-screen bg-gray-50 p-4 text-gray-900 font-sans">
+                    <header className="mb-6">
+                        <h1 className="text-2xl font-black text-blue-900">GERENTE DE MESA</h1>
+                        {itensBaixos.length > 0 && (
+                            <div className="mt-2 p-2 bg-red-600 text-white rounded text-sm animate-pulse">
+                                ⚠️ ESTOQUE BAIXO: {itensBaixos.map(p => p.nome).join(', ')}
+                            </div>
+                        )}
+                    </header>
+
+                    <nav className="flex gap-2 mb-6">
+                        <button onClick={() => setPagina('home')} className="bg-blue-900 text-white px-4 py-2 rounded-lg font-bold">Mesas</button>
+                        <button onClick={() => setPagina('cadastro')} className="bg-white border border-blue-900 text-blue-900 px-4 py-2 rounded-lg font-bold">+ Produto</button>
+                        <button onClick={() => setPagina('estoque')} className="bg-gray-700 text-white px-4 py-2 rounded-lg font-bold">Estoque</button>
+                    </nav>
+
+                    {pagina === 'home' && (
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            {mesas.map(mesa => (
+                                <div key={mesa.id} onClick={() => setMesaSelecionada(mesa)} className={`p-4 rounded-xl shadow border-2 cursor-pointer ${mesa.total > 0 ? 'bg-orange-500 border-orange-600 text-white' : 'bg-white border-gray-200'}`}>
+                                    <h3 className="text-lg font-bold">Mesa {mesa.id}</h3>
+                                    <p className="text-xl font-mono">R$ {mesa.total.toFixed(2)}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {pagina === 'cadastro' && (
+                        <div className="bg-white p-6 rounded-xl shadow max-w-md mx-auto">
+                            <h2 className="text-xl font-bold mb-4 text-black">Cadastrar Produto</h2>
+                            <form onSubmit={adicionarProduto} className="flex flex-col gap-4">
+                                <input name="nome" placeholder="Nome" className="border p-2 rounded text-black" required />
+                                <input name="preco" type="number" step="0.01" placeholder="Preço" className="border p-2 rounded text-black" required />
+                                <input name="estoque" type="number" placeholder="Estoque Inicial" className="border p-2 rounded text-black" required />
+                                <button type="submit" className="bg-green-600 text-white p-3 rounded font-bold">SALVAR</button>
+                            </form>
+                        </div>
+                    )}
+
+                    {pagina === 'estoque' && (
+                        <div className="bg-white rounded-xl shadow overflow-hidden">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-100">
+                                    <tr>
+                                        <th className="p-3">Item</th>
+                                        <th className="p-3 text-center">Estoque</th>
+                                        <th className="p-3">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {produtos.map(p => (
+                                        <tr key={p.id} className="border-b">
+                                            <td className="p-3 font-bold text-black">{p.nome}</td>
+                                            <td className={`p-3 text-center font-bold ${p.estoque <= p.min ? 'text-red-600' : 'text-green-600'}`}>{p.estoque}</td>
+                                            <td className="p-3">
+                                                <button onClick={() => excluirProdutoGlobal(p.id)} className="text-red-500 text-xs font-bold">EXCLUIR</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {mesaSelecionada && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+                                <div className="flex justify-between mb-4">
+                                    <h2 className="text-2xl font-black text-black">Mesa {mesaSelecionada.id}</h2>
+                                    <button onClick={() => setMesaSelecionada(null)} className="text-2xl">&times;</button>
+                                </div>
+                                <div className="max-h-40 overflow-y-auto mb-4 border-b">
+                                    {mesaSelecionada.itens.map((it) => (
+                                        <div key={it.uniqueId} className="flex justify-between py-2 text-black">
+                                            <span>{it.nome}</span>
+                                            <div className="flex gap-2">
+                                                <span>R$ {it.preco.toFixed(2)}</span>
+                                                <button onClick={() => removerItemDaMesa(it.uniqueId, it.id, it.preco)} className="text-red-500 font-bold px-2">X</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="flex justify-between text-xl font-bold mb-6 text-black">
+                                    <span>TOTAL:</span>
+                                    <span>R$ {mesaSelecionada.total.toFixed(2)}</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 mb-4">
+                                    {produtos.map(p => (
+                                        <button key={p.id} onClick={() => adicionarItemAMesa(p.id)} className="bg-blue-50 p-2 rounded text-xs text-blue-900 border border-blue-100">
+                                            {p.nome} (Est: {p.estoque})
+                                        </button>
+                                    ))}
+                                </div>
+                                <button onClick={() => fecharMesa(mesaSelecionada.id)} className="w-full bg-green-600 text-white p-4 rounded-xl font-bold">FECHAR MESA</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<MesaApp />);
+    </script>
+</body>
+</html>
