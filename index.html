@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerenciador de Mesas</title>
+    <title>Gerenciador de Mesas Pro</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -22,7 +22,12 @@
                 { id: 2, nome: 'Água s/ Gás', preco: 4.00, estoque: 3, min: 5 }
             ]);
             const [pagina, setPagina] = useState('home');
-            const [mesaSelecionada, setMesaSelecionada] = useState(null);
+            
+            // AGORA GUARDAMOS APENAS O ID DA MESA ABERTA
+            const [idMesaAberta, setIdMesaAberta] = useState(null);
+
+            // FUNÇÃO PARA PEGAR OS DADOS ATUALIZADOS DA MESA ABERTA
+            const mesaAtual = mesas.find(m => m.id === idMesaAberta);
 
             const adicionarProduto = (e) => {
                 e.preventDefault();
@@ -35,7 +40,6 @@
                 };
                 setProdutos([...produtos, novo]);
                 e.target.reset();
-                alert("Cadastrado!");
             };
 
             const excluirProdutoGlobal = (id) => {
@@ -46,92 +50,102 @@
                 const prod = produtos.find(p => p.id === produtoId);
                 if (prod.estoque <= 0) return alert("Estoque esgotado!");
 
-                setMesas(mesas.map(m => {
-                    if (m.id === mesaSelecionada.id) {
+                setMesas(prevMesas => prevMesas.map(m => {
+                    if (m.id === idMesaAberta) {
                         const novosItens = [...m.itens, { ...prod, uniqueId: Date.now() }];
                         return { ...m, itens: novosItens, total: m.total + prod.preco };
                     }
                     return m;
                 }));
 
-                setProdutos(produtos.map(p => p.id === produtoId ? { ...p, estoque: p.estoque - 1 } : p));
+                setProdutos(prevProds => prevProds.map(p => 
+                    p.id === produtoId ? { ...p, estoque: p.estoque - 1 } : p
+                ));
             };
 
             const removerItemDaMesa = (uniqueId, produtoId, preco) => {
-                setMesas(mesas.map(m => {
-                    if (m.id === mesaSelecionada.id) {
+                setMesas(prevMesas => prevMesas.map(m => {
+                    if (m.id === idMesaAberta) {
                         const novosItens = m.itens.filter(item => item.uniqueId !== uniqueId);
                         return { ...m, itens: novosItens, total: m.total - preco };
                     }
                     return m;
                 }));
-                setProdutos(produtos.map(p => p.id === produtoId ? { ...p, estoque: p.estoque + 1 } : p));
+                setProdutos(prevProds => prevProds.map(p => 
+                    p.id === produtoId ? { ...p, estoque: p.estoque + 1 } : p
+                ));
             };
 
             const fecharMesa = (id) => {
-                setMesas(mesas.map(m => m.id === id ? { ...m, itens: [], total: 0 } : m));
-                setMesaSelecionada(null);
+                if(confirm(`Deseja fechar a conta da Mesa ${id}?`)) {
+                    setMesas(prevMesas => prevMesas.map(m => m.id === id ? { ...m, itens: [], total: 0 } : m));
+                    setIdMesaAberta(null);
+                }
             };
 
             const itensBaixos = produtos.filter(p => p.estoque <= p.min);
 
             return (
-                <div className="min-h-screen bg-gray-50 p-4 text-gray-900 font-sans">
-                    <header className="mb-6">
-                        <h1 className="text-2xl font-black text-blue-900">GERENTE DE MESA</h1>
-                        {itensBaixos.length > 0 && (
-                            <div className="mt-2 p-2 bg-red-600 text-white rounded text-sm animate-pulse">
-                                ⚠️ ESTOQUE BAIXO: {itensBaixos.map(p => p.nome).join(', ')}
-                            </div>
-                        )}
+                <div className="min-h-screen bg-gray-100 p-4 text-gray-900 font-sans">
+                    <header className="mb-6 flex justify-between items-center">
+                        <h1 className="text-xl font-black text-blue-900 leading-none">GERENTE<br/>DE MESA</h1>
+                        <div className="text-right">
+                           {itensBaixos.length > 0 && (
+                                <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full animate-pulse">
+                                    ESTOQUE CRÍTICO
+                                </span>
+                           )}
+                        </div>
                     </header>
 
                     <nav className="flex gap-2 mb-6">
-                        <button onClick={() => setPagina('home')} className="bg-blue-900 text-white px-4 py-2 rounded-lg font-bold">Mesas</button>
-                        <button onClick={() => setPagina('cadastro')} className="bg-white border border-blue-900 text-blue-900 px-4 py-2 rounded-lg font-bold">+ Produto</button>
-                        <button onClick={() => setPagina('estoque')} className="bg-gray-700 text-white px-4 py-2 rounded-lg font-bold">Estoque</button>
+                        <button onClick={() => setPagina('home')} className={`flex-1 py-3 rounded-xl font-bold transition ${pagina === 'home' ? 'bg-blue-900 text-white shadow-lg' : 'bg-white text-blue-900'}`}>Mesas</button>
+                        <button onClick={() => setPagina('cadastro')} className={`flex-1 py-3 rounded-xl font-bold transition ${pagina === 'cadastro' ? 'bg-blue-900 text-white shadow-lg' : 'bg-white text-blue-900'}`}>+ Item</button>
+                        <button onClick={() => setPagina('estoque')} className={`flex-1 py-3 rounded-xl font-bold transition ${pagina === 'estoque' ? 'bg-blue-900 text-white shadow-lg' : 'bg-white text-blue-900'}`}>Estoque</button>
                     </nav>
 
                     {pagina === 'home' && (
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div className="grid grid-cols-2 gap-3">
                             {mesas.map(mesa => (
-                                <div key={mesa.id} onClick={() => setMesaSelecionada(mesa)} className={`p-4 rounded-xl shadow border-2 cursor-pointer ${mesa.total > 0 ? 'bg-orange-500 border-orange-600 text-white' : 'bg-white border-gray-200'}`}>
-                                    <h3 className="text-lg font-bold">Mesa {mesa.id}</h3>
-                                    <p className="text-xl font-mono">R$ {mesa.total.toFixed(2)}</p>
+                                <div key={mesa.id} onClick={() => setIdMesaAberta(mesa.id)} className={`p-4 rounded-2xl shadow-sm border-2 transition-all active:scale-95 ${mesa.total > 0 ? 'bg-orange-500 border-orange-600 text-white' : 'bg-white border-white text-gray-400'}`}>
+                                    <h3 className="text-sm font-bold uppercase opacity-80">Mesa {mesa.id}</h3>
+                                    <p className="text-2xl font-black mt-1">R$ {mesa.total.toFixed(2)}</p>
                                 </div>
                             ))}
                         </div>
                     )}
 
                     {pagina === 'cadastro' && (
-                        <div className="bg-white p-6 rounded-xl shadow max-w-md mx-auto">
-                            <h2 className="text-xl font-bold mb-4 text-black">Cadastrar Produto</h2>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm max-w-md mx-auto border border-gray-200">
+                            <h2 className="text-lg font-black mb-4">Novo Produto</h2>
                             <form onSubmit={adicionarProduto} className="flex flex-col gap-4">
-                                <input name="nome" placeholder="Nome" className="border p-2 rounded text-black" required />
-                                <input name="preco" type="number" step="0.01" placeholder="Preço" className="border p-2 rounded text-black" required />
-                                <input name="estoque" type="number" placeholder="Estoque Inicial" className="border p-2 rounded text-black" required />
-                                <button type="submit" className="bg-green-600 text-white p-3 rounded font-bold">SALVAR</button>
+                                <input name="nome" placeholder="Nome do Produto" className="border-b-2 p-2 outline-none focus:border-blue-500 text-black font-medium" required />
+                                <div className="flex gap-2">
+                                    <input name="preco" type="number" step="0.01" placeholder="Preço" className="border-b-2 p-2 w-1/2 outline-none focus:border-blue-500 text-black font-medium" required />
+                                    <input name="estoque" type="number" placeholder="Estoque" className="border-b-2 p-2 w-1/2 outline-none focus:border-blue-500 text-black font-medium" required />
+                                </div>
+                                <button type="submit" className="bg-blue-900 text-white p-4 rounded-xl font-black mt-2">CADASTRAR</button>
                             </form>
                         </div>
                     )}
 
                     {pagina === 'estoque' && (
-                        <div className="bg-white rounded-xl shadow overflow-hidden">
+                        <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-200">
                             <table className="w-full text-left">
-                                <thead className="bg-gray-100">
+                                <thead className="bg-gray-50 border-b">
                                     <tr>
-                                        <th className="p-3">Item</th>
-                                        <th className="p-3 text-center">Estoque</th>
-                                        <th className="p-3">Ações</th>
+                                        <th className="p-4 text-xs font-black text-gray-400 uppercase">Item</th>
+                                        <th className="p-4 text-xs font-black text-gray-400 uppercase text-center">Qtd</th>
+                                        <th className="p-4"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {produtos.map(p => (
-                                        <tr key={p.id} className="border-b">
-                                            <td className="p-3 font-bold text-black">{p.nome}</td>
-                                            <td className={`p-3 text-center font-bold ${p.estoque <= p.min ? 'text-red-600' : 'text-green-600'}`}>{p.estoque}</td>
-                                            <td className="p-3">
-                                                <button onClick={() => excluirProdutoGlobal(p.id)} className="text-red-500 text-xs font-bold">EXCLUIR</button>
+                                        <tr key={p.id} className="border-b last:border-0">
+                                            <td className="p-4 font-bold text-gray-700">{p.nome} <br/> <span className="text-[10px] text-gray-400 font-normal text-blue-600">R$ {p.preco.toFixed(2)}</span></td>
+                                            <td className={`p-4 text-center font-black ${p.estoque <= p.min ? 'text-red-600' : 'text-green-600'}`}>{p.estoque}</td>
+                                            <td className="p-4 text-right">
+                                                <button onClick={() => excluirProdutoGlobal(p.id)} className="text-red-400 font-bold text-xs">Excluir</button>
                                             </td>
                                         </tr>
                                     ))}
@@ -140,36 +154,52 @@
                         </div>
                     )}
 
-                    {mesaSelecionada && (
-                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
-                            <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-                                <div className="flex justify-between mb-4">
-                                    <h2 className="text-2xl font-black text-black">Mesa {mesaSelecionada.id}</h2>
-                                    <button onClick={() => setMesaSelecionada(null)} className="text-2xl">&times;</button>
+                    {/* MODAL CORRIGIDO: USA MESAATUAL PARA REFLETIR MUDANÇAS EM TEMPO REAL */}
+                    {mesaAtual && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl p-6 w-full max-w-md shadow-2xl animate-in slide-in-from-bottom duration-300">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-3xl font-black">Mesa {mesaAtual.id}</h2>
+                                    <button onClick={() => setIdMesaAberta(null)} className="bg-gray-100 w-10 h-10 rounded-full text-2xl font-light">&times;</button>
                                 </div>
-                                <div className="max-h-40 overflow-y-auto mb-4 border-b">
-                                    {mesaSelecionada.itens.map((it) => (
-                                        <div key={it.uniqueId} className="flex justify-between py-2 text-black">
-                                            <span>{it.nome}</span>
-                                            <div className="flex gap-2">
-                                                <span>R$ {it.preco.toFixed(2)}</span>
-                                                <button onClick={() => removerItemDaMesa(it.uniqueId, it.id, it.preco)} className="text-red-500 font-bold px-2">X</button>
+                                
+                                <div className="max-h-48 overflow-y-auto mb-4 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                                    {mesaAtual.itens.length === 0 ? (
+                                        <p className="text-gray-400 text-center py-4 italic">Nenhum item adicionado.</p>
+                                    ) : (
+                                        mesaAtual.itens.map((it) => (
+                                            <div key={it.uniqueId} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-0">
+                                                <span className="font-bold text-gray-700">{it.nome}</span>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="font-mono text-sm">R$ {it.preco.toFixed(2)}</span>
+                                                    <button onClick={() => removerItemDaMesa(it.uniqueId, it.id, it.preco)} className="text-red-500 bg-red-50 w-6 h-6 rounded-full flex items-center justify-center font-bold">×</button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        ))
+                                    )}
                                 </div>
-                                <div className="flex justify-between text-xl font-bold mb-6 text-black">
-                                    <span>TOTAL:</span>
-                                    <span>R$ {mesaSelecionada.total.toFixed(2)}</span>
+
+                                <div className="flex justify-between items-end mb-6">
+                                    <span className="text-gray-400 font-bold text-xs uppercase">Total da Conta</span>
+                                    <span className="text-4xl font-black text-blue-900 font-mono leading-none">R$ {mesaAtual.total.toFixed(2)}</span>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 mb-4">
-                                    {produtos.map(p => (
-                                        <button key={p.id} onClick={() => adicionarItemAMesa(p.id)} className="bg-blue-50 p-2 rounded text-xs text-blue-900 border border-blue-100">
-                                            {p.nome} (Est: {p.estoque})
-                                        </button>
-                                    ))}
+
+                                <div className="space-y-4">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Cardápio Disponível</p>
+                                    <div className="flex gap-2 overflow-x-auto pb-2">
+                                        {produtos.map(p => (
+                                            <button key={p.id} onClick={() => adicionarItemAMesa(p.id)} className="flex-shrink-0 bg-white border-2 border-blue-50 p-3 rounded-2xl text-left hover:border-blue-500 shadow-sm transition-colors">
+                                                <p className="font-bold text-xs text-gray-700">{p.nome}</p>
+                                                <p className="text-blue-600 font-black text-sm">R$ {p.preco.toFixed(2)}</p>
+                                                <p className="text-[9px] text-gray-400 uppercase font-bold">Est: {p.estoque}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    
+                                    <button onClick={() => fecharMesa(mesaAtual.id)} className="w-full bg-green-500 text-white p-5 rounded-2xl font-black text-xl shadow-lg shadow-green-100 hover:bg-green-600 active:scale-95 transition">
+                                        FECHAR CONTA
+                                    </button>
                                 </div>
-                                <button onClick={() => fecharMesa(mesaSelecionada.id)} className="w-full bg-green-600 text-white p-4 rounded-xl font-bold">FECHAR MESA</button>
                             </div>
                         </div>
                     )}
