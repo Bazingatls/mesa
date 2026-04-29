@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JB ESPETO - Gestão Cloud</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -11,8 +11,10 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f1f5f9; }
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f1f5f9; overflow-x: hidden; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        /* Ajuste para altura total no celular */
+        .modal-height { max-height: 85vh; }
     </style>
 </head>
 <body>
@@ -65,21 +67,19 @@
             }
 
             async function removerItemUnico(pedidoId) {
-                if(confirm("Remover este item do pedido?")) {
-                    await supabaseClient.from('pedidos').delete().eq('id', pedidoId);
-                    buscarDados();
-                }
+                await supabaseClient.from('pedidos').delete().eq('id', pedidoId);
+                buscarDados();
             }
 
             async function deletarProdutoEstoque(produtoId) {
-                if(confirm("Excluir este produto permanentemente do sistema?")) {
+                if(confirm("Excluir este produto permanentemente?")) {
                     await supabaseClient.from('produtos').delete().eq('id', produtoId);
                     buscarDados();
                 }
             }
 
             async function fecharConta(mesaId) {
-                if(confirm(`Limpar todos os itens da Mesa ${mesaId}?`)) {
+                if(confirm(`Limpar Mesa ${mesaId}?`)) {
                     await supabaseClient.from('pedidos').delete().eq('mesa', mesaId);
                     setIdMesaAberta(null);
                     buscarDados();
@@ -90,7 +90,7 @@
                 e.preventDefault();
                 const novo = { nome: e.target.nome.value, preco: parseFloat(e.target.preco.value), estoque: parseInt(e.target.estoque.value) };
                 const { error } = await supabaseClient.from('produtos').insert([novo]);
-                if (!error) { e.target.reset(); buscarDados(); alert("Salvo no JB Espeto!"); }
+                if (!error) { e.target.reset(); buscarDados(); alert("Salvo!"); }
             }
 
             if (carregando) return (
@@ -102,52 +102,51 @@
             const mesaAtual = mesas.find(m => m.id === idMesaAberta);
 
             return (
-                <div className="min-h-screen pb-24">
-                    <header className="bg-[#1e293b] p-6 shadow-xl flex justify-between items-center mb-6 border-b border-slate-700">
-                        <h1 className="text-2xl font-black text-white italic">JB <span className="text-orange-500">ESPETO</span></h1>
-                        <button onClick={buscarDados} className="bg-slate-700 p-2 rounded-full">🔄</button>
+                <div className="min-h-screen pb-20">
+                    <header className="bg-[#1e293b] p-4 shadow-xl flex justify-between items-center mb-4 border-b border-slate-700 sticky top-0 z-50">
+                        <h1 className="text-xl font-black text-white italic tracking-tighter">JB <span className="text-orange-500 uppercase">Espeto</span></h1>
+                        <button onClick={buscarDados} className="bg-slate-700 p-2 rounded-xl text-lg">🔄</button>
                     </header>
 
-                    <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/95 backdrop-blur-md border-t border-slate-700 p-4 flex gap-4 z-40">
-                        <button onClick={() => setPagina('home')} className={`flex-1 p-4 rounded-2xl font-black transition-all ${pagina === 'home' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
-                        <button onClick={() => setPagina('estoque')} className={`flex-1 p-4 rounded-2xl font-black transition-all ${pagina === 'estoque' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400'}`}>ESTOQUE</button>
+                    <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/95 backdrop-blur-md border-t border-slate-700 p-3 flex gap-3 z-40">
+                        <button onClick={() => setPagina('home')} className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${pagina === 'home' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
+                        <button onClick={() => setPagina('estoque')} className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${pagina === 'estoque' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400'}`}>ESTOQUE</button>
                     </nav>
 
-                    <main className="px-4">
+                    <main className="px-3">
                         {pagina === 'home' && (
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-3">
                                 {mesas.map(m => (
-                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-6 rounded-[30px] border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400 shadow-xl shadow-orange-900/40' : 'bg-slate-800 border-slate-700'}`}>
-                                        <div className="text-[10px] font-black opacity-60 uppercase">Mesa {m.id}</div>
-                                        <div className="text-2xl font-black mt-1 text-white">R$ {m.total.toFixed(2)}</div>
+                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400' : 'bg-slate-800 border-slate-700'}`}>
+                                        <div className="text-[9px] font-black opacity-70 uppercase tracking-tighter">Mesa {m.id}</div>
+                                        <div className="text-xl font-black mt-1 text-white">R$ {m.total.toFixed(2)}</div>
                                     </div>
                                 ))}
                             </div>
                         )}
 
                         {pagina === 'estoque' && (
-                            <div className="space-y-6">
-                                <form onSubmit={cadastrarNovo} className="bg-[#1e293b] p-6 rounded-[30px] border border-slate-700 space-y-4">
-                                    <h2 className="font-black text-slate-400 text-[10px] uppercase tracking-widest">Novo Item</h2>
-                                    <input name="nome" placeholder="Ex: Espeto de Carne" className="w-full p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 text-white" required />
+                            <div className="space-y-4">
+                                <form onSubmit={cadastrarNovo} className="bg-[#1e293b] p-5 rounded-2xl border border-slate-700 space-y-3">
+                                    <h2 className="font-black text-slate-400 text-[9px] uppercase tracking-widest text-center">Cadastrar Item</h2>
+                                    <input name="nome" placeholder="Produto" className="w-full p-3 bg-slate-800 rounded-xl outline-none border border-slate-700 text-sm" required />
                                     <div className="flex gap-2">
-                                        <input name="preco" type="number" step="0.01" placeholder="Preço" className="flex-1 p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 text-white" required />
-                                        <input name="estoque" type="number" placeholder="Qtd" className="flex-1 p-4 bg-slate-800 rounded-2xl outline-none border border-slate-700 text-white" required />
+                                        <input name="preco" type="number" step="0.01" placeholder="Preço" className="flex-1 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
+                                        <input name="estoque" type="number" placeholder="Est" className="w-20 p-3 bg-slate-800 rounded-xl border border-slate-700 text-sm" required />
                                     </div>
-                                    <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black">ADICIONAR</button>
+                                    <button className="w-full bg-orange-600 text-white p-3 rounded-xl font-black text-sm uppercase">Adicionar</button>
                                 </form>
 
-                                <div className="bg-[#1e293b] p-6 rounded-[30px] border border-slate-700">
-                                    <h2 className="font-black text-slate-400 mb-4 text-[10px] uppercase tracking-widest">Estoque Atual</h2>
+                                <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-700">
                                     {produtos.map(p => (
-                                        <div key={p.id} className="flex justify-between items-center py-4 border-b border-slate-800 last:border-0">
-                                            <div>
-                                                <div className="font-bold text-slate-200">{p.nome}</div>
-                                                <div className="text-xs font-black text-orange-500 uppercase">R$ {p.preco.toFixed(2)}</div>
+                                        <div key={p.id} className="flex justify-between items-center py-3 border-b border-slate-800 last:border-0">
+                                            <div className="flex-1">
+                                                <div className="font-bold text-slate-200 text-sm">{p.nome}</div>
+                                                <div className="text-[10px] font-black text-orange-500">R$ {p.preco.toFixed(2)}</div>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                <div className={`font-black text-[10px] px-3 py-1 rounded-full ${p.estoque < 5 ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{p.estoque} UN</div>
-                                                <button onClick={() => deletarProdutoEstoque(p.id)} className="text-slate-500 hover:text-red-500 p-1">🗑️</button>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-[9px] font-black px-2 py-1 rounded-lg ${p.estoque < 5 ? 'bg-red-600' : 'bg-slate-700'}`}>{p.estoque} UN</span>
+                                                <button onClick={() => deletarProdutoEstoque(p.id)} className="text-slate-500 text-lg">🗑️</button>
                                             </div>
                                         </div>
                                     ))}
@@ -157,38 +156,48 @@
                     </main>
 
                     {idMesaAberta && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4">
-                            <div className="bg-[#1e293b] w-full max-w-lg rounded-[40px] p-8 border-t border-slate-600 animate-in slide-in-from-bottom">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-3xl font-black text-white italic tracking-tighter text-orange-500">Mesa {idMesaAberta}</h2>
-                                    <button onClick={() => setIdMesaAberta(null)} className="bg-slate-700 text-white w-12 h-12 rounded-full font-bold">✕</button>
+                        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                            <div className="bg-[#1e293b] w-full max-w-lg rounded-t-[32px] sm:rounded-[32px] p-6 border-t border-slate-700 flex flex-col modal-height">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-2xl font-black text-orange-500 italic">Mesa {idMesaAberta}</h2>
+                                    <button onClick={() => setIdMesaAberta(null)} className="bg-slate-800 text-white w-10 h-10 rounded-full font-bold">✕</button>
                                 </div>
 
-                                <div className="space-y-3 mb-6 max-h-40 overflow-y-auto no-scrollbar">
-                                    {mesaAtual.itens.map((it, idx) => (
-                                        <div key={idx} className="flex justify-between items-center bg-slate-800/50 p-2 rounded-xl">
-                                            <span className="text-slate-300 text-sm font-bold">{it.produto_nome} - R$ {it.preco_unidade.toFixed(2)}</span>
-                                            <button onClick={() => removerItemUnico(it.id)} className="bg-red-900/30 text-red-500 px-2 py-1 rounded-lg text-xs font-black">REMOVER</button>
-                                        </div>
-                                    ))}
+                                {/* LISTA DE ITENS LANÇADOS COM SCROLL */}
+                                <div className="flex-shrink-0 mb-2">
+                                    <p className="text-[10px] font-black text-slate-500 uppercase mb-2">Itens na Mesa</p>
+                                    <div className="max-h-32 overflow-y-auto no-scrollbar space-y-1 bg-slate-900/50 p-2 rounded-xl">
+                                        {mesaAtual.itens.map((it, idx) => (
+                                            <div key={idx} className="flex justify-between items-center py-1">
+                                                <span className="text-slate-300 text-xs font-bold truncate pr-2">{it.produto_nome}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-white font-bold text-xs">R${it.preco_unidade.toFixed(2)}</span>
+                                                    <button onClick={() => removerItemUnico(it.id)} className="text-red-500 font-black text-xs px-1">X</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {mesaAtual.itens.length === 0 && <p className="text-[10px] text-slate-600 text-center py-2">Mesa vazia</p>}
+                                    </div>
                                 </div>
 
-                                <div className="text-5xl font-black text-white mb-8 text-right tracking-tighter">
-                                    <span className="text-[10px] text-orange-500 uppercase tracking-widest mr-2 font-normal">Total</span>
+                                <div className="text-3xl font-black text-white text-right mb-4">
+                                    <span className="text-[10px] text-orange-500 uppercase mr-2">Total:</span>
                                     R$ {mesaAtual.total.toFixed(2)}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2 mb-6">
+                                {/* BOTÕES DE ADICIONAR EM DUAS COLUNAS COM SCROLL */}
+                                <p className="text-[10px] font-black text-slate-500 uppercase mb-2">Lançar Novo Item</p>
+                                <div className="flex-1 overflow-y-auto no-scrollbar grid grid-cols-2 gap-2 mb-4 pr-1">
                                     {produtos.map(p => (
-                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-4 bg-slate-800 rounded-2xl text-left border border-slate-700 active:border-orange-500 transition-all">
-                                            <div className="font-bold text-[10px] text-slate-500 uppercase">{p.nome}</div>
-                                            <div className="font-black text-white text-sm">R$ {p.preco.toFixed(2)}</div>
+                                        <button key={p.id} onClick={() => adicionarItem(p)} className="p-3 bg-slate-800 rounded-xl border border-slate-700 active:bg-orange-900/20 active:border-orange-500 transition-all text-left">
+                                            <div className="font-bold text-[9px] text-slate-400 uppercase truncate">{p.nome}</div>
+                                            <div className="font-black text-white text-xs">R$ {p.preco.toFixed(2)}</div>
                                         </button>
                                     ))}
                                 </div>
 
-                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white p-5 rounded-[25px] font-black shadow-lg shadow-red-900/20 active:scale-95 transition-all uppercase tracking-widest text-sm">
-                                    LIMPAR MESA / PAGAMENTO
+                                <button onClick={() => fecharConta(idMesaAberta)} className="w-full bg-red-600 text-white p-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all text-xs uppercase mb-2">
+                                    FECHAR CONTA / LIMPAR
                                 </button>
                             </div>
                         </div>
