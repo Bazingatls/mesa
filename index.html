@@ -34,6 +34,7 @@
             const [produtos, setProdutos] = useState([]);
             const [notas, setNotas] = useState([]);
             const [logs, setLogs] = useState([]);
+            const [equipe, setEquipe] = useState([]);
             const [idMesaAberta, setIdMesaAberta] = useState(null);
             const [carregando, setCarregando] = useState(true);
 
@@ -70,6 +71,9 @@
                     if (userLogado?.nivel === 'admin') {
                         const { data: lg } = await supabaseClient.from('logs_sistema').select('*').order('data', { ascending: false }).limit(40);
                         if (lg) setLogs(lg);
+
+                        const { data: eq } = await supabaseClient.from('usuarios_gestao').select('id, usuario, nivel').order('usuario');
+                        if (eq) setEquipe(eq);
                     }
                 } catch (err) { console.error(err); }
                 setCarregando(false);
@@ -86,7 +90,7 @@
 
             const realizarLogin = async (e) => {
                 e.preventDefault();
-                const u = e.target.usuario.value;
+                const u = e.target.usuario.value.toLowerCase();
                 const p = e.target.senha.value;
                 const { data } = await supabaseClient.from('usuarios_gestao').select('*').eq('usuario', u).eq('senha', p).single();
                 if (data) {
@@ -100,13 +104,35 @@
                 setUserLogado(null);
             };
 
-            // ACÕES COM DETALHAMENTO DE CONSUMO NO LOG
+            // FUNÇÕES DE EQUIPE
+            async function handleNovoUsuario(e) {
+                e.preventDefault();
+                const user = e.target.u.value.toLowerCase().trim();
+                const pass = e.target.s.value;
+                const nivel = e.target.n.value;
+                const { error } = await supabaseClient.from('usuarios_gestao').insert([{ usuario: user, senha: pass, nivel: nivel }]);
+                if (error) { alert("Erro ao criar usuário."); } 
+                else {
+                    await registrarLog("EQUIPE", `Adicionou usuário: ${user} (${nivel})`);
+                    e.target.reset();
+                    buscarDados();
+                }
+            }
+
+            async function removerUsuario(id, nome) {
+                if (nome === userLogado.usuario) return alert("Você não pode se excluir!");
+                if (confirm(`Remover ${nome}?`)) {
+                    await registrarLog("EQUIPE", `Removeu usuário: ${nome}`);
+                    await supabaseClient.from('usuarios_gestao').delete().eq('id', id);
+                    buscarDados();
+                }
+            }
+
             async function handleLimparMesa(id) {
                 const mesa = mesas.find(m => m.id === id);
                 if (confirm(`Limpar Mesa ${id}?`)) {
                     const resumoConsumo = mesa.itens.map(i => i.produto_nome).join(", ");
                     const detalhesLog = `Total: R$ ${mesa.total.toFixed(2)} | Itens: [${resumoConsumo}]`;
-                    
                     await registrarLog("LIMPEZA MESA", detalhesLog);
                     await supabaseClient.from('pedidos').delete().eq('mesa', id);
                     setIdMesaAberta(null);
@@ -121,7 +147,6 @@
                 if(clie) {
                     const resumoConsumo = mesa.itens.map(i => i.produto_nome).join(", ");
                     const detalhesLog = `Valor: R$ ${mesa.total.toFixed(2)} para ${clie.toUpperCase()} | Consumo: [${resumoConsumo}]`;
-                    
                     await registrarLog("FIADO ANOTADO", detalhesLog);
                     await supabaseClient.from('notas_pendentes').insert([{ cliente: clie.toUpperCase(), valor: mesa.total }]);
                     await supabaseClient.from('pedidos').delete().eq('mesa', idMesaAberta);
@@ -135,9 +160,9 @@
                     <div className="h-screen flex items-center justify-center bg-slate-950 p-6">
                         <form onSubmit={realizarLogin} className="w-full max-w-sm bg-slate-900 p-8 rounded-[40px] border border-slate-800">
                             <h1 className="text-4xl font-black text-center text-white mb-8 italic underline decoration-orange-500 underline-offset-8">JB ESPETO</h1>
-                            <input name="usuario" placeholder="Usuário" className="w-full p-4 mb-4 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700" required />
-                            <input name="senha" type="password" placeholder="Senha" className="w-full p-4 mb-6 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700" required />
-                            <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black uppercase">Entrar</button>
+                            <input name="usuario" placeholder="Usuário" className="w-full p-4 mb-4 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700 font-bold" required />
+                            <input name="senha" type="password" placeholder="Senha" className="w-full p-4 mb-6 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700 font-bold" required />
+                            <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black uppercase shadow-lg shadow-orange-600/20">Entrar</button>
                         </form>
                     </div>
                 );
@@ -149,36 +174,63 @@
                 <div className="min-h-screen pb-32">
                     <header className="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center sticky top-0 z-50">
                         <div>
-                            <h1 className="font-black italic text-xl">JB <span className="text-orange-500 uppercase">Espeto</span></h1>
+                            <h1 className="font-black italic text-xl uppercase tracking-tighter">JB <span className="text-orange-500">Espeto</span></h1>
                             <span className="text-[8px] font-bold bg-orange-600 text-white px-2 py-0.5 rounded uppercase">{userLogado.nivel}</span>
                         </div>
-                        <button onClick={sair} className="text-[10px] font-black text-red-500 bg-red-500/10 px-3 py-2 rounded-lg">SAIR</button>
+                        <button onClick={sair} className="text-[10px] font-black text-red-500 bg-red-500/10 px-3 py-2 rounded-lg border border-red-500/20 uppercase">Sair</button>
                     </header>
 
                     <main className="p-4">
                         {pagina === 'home' && (
                             <div className="grid grid-cols-2 gap-3">
                                 {mesas.map(m => (
-                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all ${m.total > 0 ? 'bg-orange-600 border-orange-400' : 'bg-slate-800 border-slate-700 opacity-60'}`}>
+                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400' : 'bg-slate-800 border-slate-700 opacity-60'}`}>
                                         <div className="text-[10px] font-black uppercase text-white/70">Mesa {m.id}</div>
                                         <div className="text-xl font-black text-white">R$ {m.total.toFixed(2)}</div>
-                                        {m.apelido && <div className="text-[9px] bg-black/30 p-1 mt-1 rounded font-bold uppercase truncate">{m.apelido}</div>}
+                                        {m.apelido && <div className="text-[9px] bg-black/30 p-1 mt-1 rounded font-bold uppercase truncate italic">{m.apelido}</div>}
                                     </div>
                                 ))}
                             </div>
                         )}
 
+                        {pagina === 'equipe' && userLogado.nivel === 'admin' && (
+                            <div className="space-y-6">
+                                <form onSubmit={handleNovoUsuario} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
+                                    <h2 className="text-orange-500 font-black uppercase text-xs">Novo Membro</h2>
+                                    <input name="u" placeholder="Usuário" className="w-full p-4 bg-slate-800 rounded-xl outline-none text-sm font-bold border border-slate-700" required />
+                                    <input name="s" placeholder="Senha" className="w-full p-4 bg-slate-800 rounded-xl outline-none text-sm font-bold border border-slate-700" required />
+                                    <select name="n" className="w-full p-4 bg-slate-800 rounded-xl outline-none text-sm font-bold border border-slate-700 text-white">
+                                        <option value="caixa">Nível: Caixa</option>
+                                        <option value="admin">Nível: Administrador</option>
+                                    </select>
+                                    <button className="w-full bg-orange-600 p-4 rounded-xl font-black uppercase text-xs">Cadastrar Membro</button>
+                                </form>
+                                <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800">
+                                    <h2 className="text-slate-500 font-black uppercase text-[10px] mb-4 px-2">Membros da Casa</h2>
+                                    {equipe.map(m => (
+                                        <div key={m.id} className="flex justify-between items-center py-4 border-b border-slate-800 last:border-0 px-2">
+                                            <div>
+                                                <div className="font-black uppercase text-sm">{m.usuario}</div>
+                                                <div className="text-[10px] text-orange-500 font-bold uppercase italic">{m.nivel}</div>
+                                            </div>
+                                            <button onClick={() => removerUsuario(m.id, m.usuario)} className="text-red-500/50 text-xl p-2">🗑️</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {pagina === 'logs' && userLogado.nivel === 'admin' && (
                             <div className="space-y-3">
-                                <h2 className="text-xl font-black italic text-orange-500 uppercase px-2 mb-4">Auditoria de Caixa</h2>
+                                <h2 className="text-xl font-black italic text-orange-500 uppercase px-2 mb-4">Auditoria</h2>
                                 {logs.map(l => (
-                                    <div key={l.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 border-l-4 border-l-orange-600">
+                                    <div key={l.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 border-l-4 border-l-orange-600 shadow-lg">
                                         <div className="flex justify-between font-black text-slate-500 text-[9px] mb-1">
                                             <span>👤 {l.usuario.toUpperCase()}</span>
                                             <span>{new Date(l.data).toLocaleString('pt-BR')}</span>
                                         </div>
                                         <div className="text-white font-black uppercase text-xs">{l.acao}</div>
-                                        <div className="text-slate-400 text-[10px] italic mt-1 leading-relaxed bg-black/20 p-2 rounded-lg">{l.detalhes}</div>
+                                        <div className="text-slate-400 text-[10px] italic mt-2 leading-relaxed bg-black/20 p-2 rounded-lg">{l.detalhes}</div>
                                     </div>
                                 ))}
                             </div>
@@ -203,7 +255,6 @@
                                         <button className="w-full bg-orange-600 p-4 rounded-xl font-black uppercase text-xs">Salvar Produto</button>
                                     </form>
                                 )}
-
                                 <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800">
                                     <h2 className="text-[10px] font-black text-slate-500 uppercase mb-4 px-2 tracking-widest">Estoque Ativo</h2>
                                     {produtos.map(p => (
@@ -242,7 +293,7 @@
                                         </div>
                                         <button onClick={async () => {
                                             if (confirm("Recebido?")) {
-                                                await registrarLog("RECEBIMENTO", `Baixa na nota de ${n.cliente} - R$ ${n.valor.toFixed(2)}`);
+                                                await registrarLog("RECEBIMENTO", `Baixa nota: ${n.cliente} - R$ ${n.valor.toFixed(2)}`);
                                                 await supabaseClient.from('notas_pendentes').update({ pago: true }).eq('id', n.id);
                                                 buscarDados();
                                             }
@@ -253,14 +304,17 @@
                         )}
                     </main>
 
-                    <nav className="fixed bottom-0 w-full bg-slate-900/95 backdrop-blur-md p-4 border-t border-slate-800 flex gap-2 z-40">
-                        <button onClick={() => setPagina('home')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] ${pagina === 'home' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
-                        <button onClick={() => setPagina('notas')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] relative ${pagina === 'notas' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>
-                            NOTAS {notas.length > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-[8px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-slate-900">{notas.length}</span>}
+                    <nav className="fixed bottom-0 w-full bg-slate-900/95 backdrop-blur-md p-4 border-t border-slate-800 flex gap-2 z-40 overflow-x-auto no-scrollbar">
+                        <button onClick={() => setPagina('home')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'home' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>Mesas</button>
+                        <button onClick={() => setPagina('notas')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase relative ${pagina === 'notas' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>
+                            Notas {notas.length > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-[8px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-slate-900">{notas.length}</span>}
                         </button>
-                        <button onClick={() => setPagina('estoque')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] ${pagina === 'estoque' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>ESTOQUE</button>
+                        <button onClick={() => setPagina('estoque')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'estoque' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>Estoque</button>
                         {userLogado.nivel === 'admin' && (
-                            <button onClick={() => setPagina('logs')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] ${pagina === 'logs' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>LOGS</button>
+                            <>
+                            <button onClick={() => setPagina('equipe')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'equipe' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>Equipe</button>
+                            <button onClick={() => setPagina('logs')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'logs' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>Logs</button>
+                            </>
                         )}
                     </nav>
 
@@ -271,22 +325,20 @@
                                     <h2 className="text-3xl font-black text-orange-500 uppercase italic">Mesa {idMesaAberta}</h2>
                                     <button onClick={() => setIdMesaAberta(null)} className="bg-slate-800 text-white w-10 h-10 rounded-full font-bold">✕</button>
                                 </div>
-
-                                <div className="bg-slate-950 p-5 rounded-3xl mb-6 border border-slate-800">
+                                <div className="bg-slate-950 p-5 rounded-3xl mb-6 border border-slate-800 shadow-inner">
                                     <div className="max-h-32 overflow-y-auto no-scrollbar mb-4 space-y-2">
                                         {mesaAtual.itens.map((it, i) => (
                                             <div key={i} className="flex justify-between text-[11px] font-bold uppercase text-slate-400 italic">
                                                 <span>{it.produto_nome}</span>
                                                 <div className="flex gap-4">
                                                     <span>R${it.preco_unidade.toFixed(2)}</span>
-                                                    <button onClick={async () => { await supabaseClient.from('pedidos').delete().eq('id', it.id); buscarDados(); }} className="text-red-500 font-black">X</button>
+                                                    <button onClick={async () => { await supabaseClient.from('pedidos').delete().eq('id', it.id); buscarDados(); }} className="text-red-500 font-black px-1">X</button>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                     <div className="text-right text-3xl font-black text-white border-t border-slate-800 pt-3">R$ {mesaAtual.total.toFixed(2)}</div>
                                 </div>
-
                                 <div className="flex-1 overflow-y-auto no-scrollbar grid grid-cols-2 gap-2 mb-6">
                                     {produtos.map(p => (
                                         <button key={p.id} onClick={async () => {
@@ -301,10 +353,9 @@
                                         </button>
                                     ))}
                                 </div>
-
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={handleAnotarFiado} className="bg-orange-600 p-5 rounded-2xl font-black uppercase text-[11px]">Anotar Fiado</button>
-                                    <button onClick={() => handleLimparMesa(idMesaAberta)} className="bg-red-600 p-5 rounded-2xl font-black uppercase text-[11px]">Limpar Mesa</button>
+                                    <button onClick={handleAnotarFiado} className="bg-orange-600 p-5 rounded-2xl font-black uppercase text-[11px]">Fiado</button>
+                                    <button onClick={() => handleLimparMesa(idMesaAberta)} className="bg-red-600 p-5 rounded-2xl font-black uppercase text-[11px]">Limpar</button>
                                 </div>
                             </div>
                         </div>
