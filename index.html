@@ -69,23 +69,22 @@
                     if (nts) setNotas(nts);
 
                     if (userLogado?.nivel === 'admin') {
-                        const { data: lg } = await supabaseClient.from('logs_sistema').select('*').order('data', { ascending: false }).limit(50);
+                        const { data: lg } = await supabaseClient.from('logs_sistema').select('*').order('data', { ascending: false }).limit(40);
                         if (lg) setLogs(lg);
-                        const { data: eq } = await supabaseClient.from('usuarios_gestao').select('*').order('usuario');
+
+                        const { data: eq } = await supabaseClient.from('usuarios_gestao').select('id, usuario, nivel').order('usuario');
                         if (eq) setEquipe(eq);
                     }
                 } catch (err) { console.error(err); }
                 setCarregando(false);
             }
 
-            async function registrarLog(acao, detalhes, financeiro = { entrada: 0, custo: 0 }) {
+            async function registrarLog(acao, detalhes) {
                 if (!userLogado) return;
                 await supabaseClient.from('logs_sistema').insert([{
                     usuario: userLogado.usuario,
-                    acao,
-                    detalhes,
-                    valor_entrada: financeiro.entrada,
-                    valor_custo: financeiro.custo
+                    acao: acao,
+                    detalhes: detalhes
                 }]);
             }
 
@@ -105,64 +104,87 @@
                 setUserLogado(null);
             };
 
-            // LÓGICA DE RELATÓRIO
-            const calcularFinanceiro = () => {
-                const resumo = logs.reduce((acc, log) => {
-                    acc.entradas += (log.valor_entrada || 0);
-                    acc.custos += (log.valor_custo || 0);
-                    return acc;
-                }, { entradas: 0, custos: 0 });
-                return { ...resumo, lucro: resumo.entradas - resumo.custos };
-            };
+            // FUNÇÕES DE EQUIPE
+            async function handleNovoUsuario(e) {
+                e.preventDefault();
+                const user = e.target.u.value.toLowerCase().trim();
+                const pass = e.target.s.value;
+                const nivel = e.target.n.value;
+                const { error } = await supabaseClient.from('usuarios_gestao').insert([{ usuario: user, senha: pass, nivel: nivel }]);
+                if (error) { alert("Erro ao criar usuário."); } 
+                else {
+                    await registrarLog("EQUIPE", `Adicionou usuário: ${user} (${nivel})`);
+                    e.target.reset();
+                    buscarDados();
+                }
+            }
+
+            async function removerUsuario(id, nome) {
+                if (nome === userLogado.usuario) return alert("Você não pode se excluir!");
+                if (confirm(`Remover ${nome}?`)) {
+                    await registrarLog("EQUIPE", `Removeu usuário: ${nome}`);
+                    await supabaseClient.from('usuarios_gestao').delete().eq('id', id);
+                    buscarDados();
+                }
+            }
 
             async function handleLimparMesa(id) {
                 const mesa = mesas.find(m => m.id === id);
-                if (confirm(`Finalizar e Limpar Mesa ${id}?`)) {
-                    const custoTotal = mesa.itens.reduce((acc, item) => {
-                        const p = produtos.find(prod => prod.nome === item.produto_nome);
-                        return acc + (p ? (p.preco_custo || 0) : 0);
-                    }, 0);
-
-                    const detalhesLog = `Mesa ${id} finalizada. Itens: ${mesa.itens.map(i => i.produto_nome).join(", ")}`;
-                    await registrarLog("VENDA MESA", detalhesLog, { entrada: mesa.total, custo: custoTotal });
+                if (confirm(`Limpar Mesa ${id}?`)) {
+                    const resumoConsumo = mesa.itens.map(i => i.produto_nome).join(", ");
+                    const detalhesLog = `Total: R$ ${mesa.total.toFixed(2)} | Itens: [${resumoConsumo}]`;
+                    await registrarLog("LIMPEZA MESA", detalhesLog);
                     await supabaseClient.from('pedidos').delete().eq('mesa', id);
                     setIdMesaAberta(null);
                     buscarDados();
                 }
             }
 
-            // ... (Demais funções de equipe e notas permanecem as mesmas, apenas atualizando logs)
+            async function handleAnotarFiado() {
+                const mesa = mesas.find(m => m.id === idMesaAberta);
+                if (mesa.total <= 0) return;
+                const clie = prompt("Nome do Cliente:", mesa.apelido);
+                if(clie) {
+                    const resumoConsumo = mesa.itens.map(i => i.produto_nome).join(", ");
+                    const detalhesLog = `Valor: R$ ${mesa.total.toFixed(2)} para ${clie.toUpperCase()} | Consumo: [${resumoConsumo}]`;
+                    await registrarLog("FIADO ANOTADO", detalhesLog);
+                    await supabaseClient.from('notas_pendentes').insert([{ cliente: clie.toUpperCase(), valor: mesa.total }]);
+                    await supabaseClient.from('pedidos').delete().eq('mesa', idMesaAberta);
+                    setIdMesaAberta(null);
+                    buscarDados();
+                }
+            }
 
             if (!userLogado) {
                 return (
                     <div className="h-screen flex items-center justify-center bg-slate-950 p-6">
                         <form onSubmit={realizarLogin} className="w-full max-w-sm bg-slate-900 p-8 rounded-[40px] border border-slate-800">
                             <h1 className="text-4xl font-black text-center text-white mb-8 italic underline decoration-orange-500 underline-offset-8">JB ESPETO</h1>
-                            <input name="usuario" placeholder="Usuário" className="w-full p-4 mb-4 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700" required />
-                            <input name="senha" type="password" placeholder="Senha" className="w-full p-4 mb-6 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700" required />
-                            <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black uppercase">Entrar</button>
+                            <input name="usuario" placeholder="Usuário" className="w-full p-4 mb-4 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700 font-bold" required />
+                            <input name="senha" type="password" placeholder="Senha" className="w-full p-4 mb-6 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700 font-bold" required />
+                            <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black uppercase shadow-lg shadow-orange-600/20">Entrar</button>
                         </form>
                     </div>
                 );
             }
 
-            const financeiro = calcularFinanceiro();
+            const mesaAtual = mesas.find(m => m.id === idMesaAberta);
 
             return (
                 <div className="min-h-screen pb-32">
                     <header className="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center sticky top-0 z-50">
                         <div>
-                            <h1 className="font-black italic text-xl uppercase">JB <span className="text-orange-500">Espeto</span></h1>
+                            <h1 className="font-black italic text-xl uppercase tracking-tighter">JB <span className="text-orange-500">Espeto</span></h1>
                             <span className="text-[8px] font-bold bg-orange-600 text-white px-2 py-0.5 rounded uppercase">{userLogado.nivel}</span>
                         </div>
-                        <button onClick={sair} className="text-[10px] font-black text-red-500 bg-red-500/10 px-3 py-2 rounded-lg border border-red-500/20">SAIR</button>
+                        <button onClick={sair} className="text-[10px] font-black text-red-500 bg-red-500/10 px-3 py-2 rounded-lg border border-red-500/20 uppercase">Sair</button>
                     </header>
 
                     <main className="p-4">
                         {pagina === 'home' && (
                             <div className="grid grid-cols-2 gap-3">
                                 {mesas.map(m => (
-                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all ${m.total > 0 ? 'bg-orange-600 border-orange-400' : 'bg-slate-800 border-slate-700 opacity-60'}`}>
+                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400' : 'bg-slate-800 border-slate-700 opacity-60'}`}>
                                         <div className="text-[10px] font-black uppercase text-white/70">Mesa {m.id}</div>
                                         <div className="text-xl font-black text-white">R$ {m.total.toFixed(2)}</div>
                                         {m.apelido && <div className="text-[9px] bg-black/30 p-1 mt-1 rounded font-bold uppercase truncate italic">{m.apelido}</div>}
@@ -171,41 +193,46 @@
                             </div>
                         )}
 
-                        {pagina === 'relatorio' && userLogado.nivel === 'admin' && (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-black text-orange-500 italic uppercase">Financeiro (Últimos Logs)</h2>
-                                <div className="grid grid-cols-1 gap-3">
-                                    <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                                        <div className="text-slate-500 font-black text-[10px] uppercase mb-1">Total Entradas</div>
-                                        <div className="text-3xl font-black text-green-500">R$ {financeiro.entradas.toFixed(2)}</div>
-                                    </div>
-                                    <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                                        <div className="text-slate-500 font-black text-[10px] uppercase mb-1">Custo dos Produtos</div>
-                                        <div className="text-3xl font-black text-red-500">R$ {financeiro.custos.toFixed(2)}</div>
-                                    </div>
-                                    <div className="bg-orange-600 p-6 rounded-3xl border border-orange-400 shadow-lg shadow-orange-600/20">
-                                        <div className="text-white/70 font-black text-[10px] uppercase mb-1">Lucro Bruto Estimado</div>
-                                        <div className="text-4xl font-black text-white">R$ {financeiro.lucro.toFixed(2)}</div>
-                                    </div>
+                        {pagina === 'equipe' && userLogado.nivel === 'admin' && (
+                            <div className="space-y-6">
+                                <form onSubmit={handleNovoUsuario} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
+                                    <h2 className="text-orange-500 font-black uppercase text-xs">Novo Membro</h2>
+                                    <input name="u" placeholder="Usuário" className="w-full p-4 bg-slate-800 rounded-xl outline-none text-sm font-bold border border-slate-700" required />
+                                    <input name="s" placeholder="Senha" className="w-full p-4 bg-slate-800 rounded-xl outline-none text-sm font-bold border border-slate-700" required />
+                                    <select name="n" className="w-full p-4 bg-slate-800 rounded-xl outline-none text-sm font-bold border border-slate-700 text-white">
+                                        <option value="caixa">Nível: Caixa</option>
+                                        <option value="admin">Nível: Administrador</option>
+                                    </select>
+                                    <button className="w-full bg-orange-600 p-4 rounded-xl font-black uppercase text-xs">Cadastrar Membro</button>
+                                </form>
+                                <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800">
+                                    <h2 className="text-slate-500 font-black uppercase text-[10px] mb-4 px-2">Membros da Casa</h2>
+                                    {equipe.map(m => (
+                                        <div key={m.id} className="flex justify-between items-center py-4 border-b border-slate-800 last:border-0 px-2">
+                                            <div>
+                                                <div className="font-black uppercase text-sm">{m.usuario}</div>
+                                                <div className="text-[10px] text-orange-500 font-bold uppercase italic">{m.nivel}</div>
+                                            </div>
+                                            <button onClick={() => removerUsuario(m.id, m.usuario)} className="text-red-500/50 text-xl p-2">🗑️</button>
+                                        </div>
+                                    ))}
                                 </div>
-                                
-                                <div className="mt-8">
-                                    <h3 className="text-xs font-black text-slate-500 uppercase mb-4 px-2">Desempenho por Item</h3>
-                                    <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden">
-                                        {produtos.map(p => {
-                                            const lucroUnitario = p.preco - (p.preco_custo || 0);
-                                            return (
-                                                <div key={p.id} className="p-4 border-b border-slate-800 flex justify-between items-center">
-                                                    <span className="font-black text-sm uppercase">{p.nome}</span>
-                                                    <div className="text-right">
-                                                        <div className="text-[10px] text-green-500 font-bold">Lucro/un: R${lucroUnitario.toFixed(2)}</div>
-                                                        <div className="text-[8px] text-slate-500 font-bold">Margem: {((lucroUnitario/p.preco)*100).toFixed(0)}%</div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                            </div>
+                        )}
+
+                        {pagina === 'logs' && userLogado.nivel === 'admin' && (
+                            <div className="space-y-3">
+                                <h2 className="text-xl font-black italic text-orange-500 uppercase px-2 mb-4">Auditoria</h2>
+                                {logs.map(l => (
+                                    <div key={l.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 border-l-4 border-l-orange-600 shadow-lg">
+                                        <div className="flex justify-between font-black text-slate-500 text-[9px] mb-1">
+                                            <span>👤 {l.usuario.toUpperCase()}</span>
+                                            <span>{new Date(l.data).toLocaleString('pt-BR')}</span>
+                                        </div>
+                                        <div className="text-white font-black uppercase text-xs">{l.acao}</div>
+                                        <div className="text-slate-400 text-[10px] italic mt-2 leading-relaxed bg-black/20 p-2 rounded-lg">{l.detalhes}</div>
                                     </div>
-                                </div>
+                                ))}
                             </div>
                         )}
 
@@ -215,77 +242,82 @@
                                     <form onSubmit={async (e) => {
                                         e.preventDefault();
                                         const n = e.target.n.value;
-                                        const pc = parseFloat(e.target.pc.value);
-                                        const pv = parseFloat(e.target.pv.value);
-                                        await registrarLog("CADASTRO", `Produto: ${n}`, { entrada: 0, custo: 0 });
-                                        await supabaseClient.from('produtos').insert([{ 
-                                            nome: n, 
-                                            preco: pv, 
-                                            preco_custo: pc,
-                                            estoque: parseInt(e.target.e.value) 
-                                        }]);
+                                        await registrarLog("CADASTRO", `Novo produto: ${n} - R$ ${e.target.p.value}`);
+                                        await supabaseClient.from('produtos').insert([{ nome: n, preco: parseFloat(e.target.p.value), estoque: parseInt(e.target.e.value) }]);
                                         e.target.reset(); buscarDados();
-                                    }} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
-                                        <h2 className="text-[11px] font-black text-orange-500 uppercase px-1">Novo Item com Custo</h2>
-                                        <input name="n" placeholder="Nome do Produto" className="w-full p-4 bg-slate-800 rounded-xl outline-none border border-slate-700 text-sm font-bold" required />
-                                        <div className="grid grid-cols-3 gap-2">
-                                            <input name="pc" step="0.01" type="number" placeholder="Custo R$" className="p-4 bg-slate-800 rounded-xl border border-slate-700 text-[10px] font-bold text-red-400" required />
-                                            <input name="pv" step="0.01" type="number" placeholder="Venda R$" className="p-4 bg-slate-800 rounded-xl border border-slate-700 text-[10px] font-bold text-green-400" required />
-                                            <input name="e" type="number" placeholder="Qtd" className="p-4 bg-slate-800 rounded-xl border border-slate-700 text-[10px] font-bold" required />
+                                    }} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 shadow-xl space-y-3">
+                                        <h2 className="text-[11px] font-black text-orange-500 uppercase px-1">Novo Item</h2>
+                                        <input name="n" placeholder="Nome" className="w-full p-4 bg-slate-800 rounded-xl outline-none border border-slate-700 text-sm font-bold" required />
+                                        <div className="flex gap-2">
+                                            <input name="p" step="0.01" type="number" placeholder="Preço" className="flex-1 p-4 bg-slate-800 rounded-xl border border-slate-700 text-sm font-bold" required />
+                                            <input name="e" type="number" placeholder="Qtd" className="w-24 p-4 bg-slate-800 rounded-xl border border-slate-700 text-sm font-bold" required />
                                         </div>
-                                        <button className="w-full bg-orange-600 p-4 rounded-xl font-black uppercase text-xs">Salvar no Inventário</button>
+                                        <button className="w-full bg-orange-600 p-4 rounded-xl font-black uppercase text-xs">Salvar Produto</button>
                                     </form>
                                 )}
-                                
                                 <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800">
-                                    <h2 className="text-[10px] font-black text-slate-500 uppercase mb-4 px-2">Gestão de Preços e Estoque</h2>
+                                    <h2 className="text-[10px] font-black text-slate-500 uppercase mb-4 px-2 tracking-widest">Estoque Ativo</h2>
                                     {produtos.map(p => (
-                                        <div key={p.id} className="py-4 border-b border-slate-800 last:border-0">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="font-black text-sm uppercase">{p.nome}</div>
-                                                <div className="text-right">
-                                                    <span className="text-red-500 text-[10px] font-bold block">Custo: R$ {p.preco_custo?.toFixed(2)}</span>
-                                                    <span className="text-green-500 text-[10px] font-bold block">Venda: R$ {p.preco.toFixed(2)}</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <input type="number" defaultValue={p.estoque} onBlur={async (e) => {
+                                        <div key={p.id} className="flex justify-between items-center py-4 border-b border-slate-800 last:border-0">
+                                            <div className="flex-1 pr-2 uppercase font-black text-sm">{p.nome} <br/><span className="text-orange-500 text-[10px]">R$ {p.preco.toFixed(2)}</span></div>
+                                            <div className="flex items-center gap-3">
+                                                <input type="number" disabled={userLogado.nivel !== 'admin'} defaultValue={p.estoque} onBlur={async (e) => {
                                                     if(userLogado.nivel === 'admin') {
+                                                        await registrarLog("AJUSTE ESTOQUE", `${p.nome}: alterado para ${e.target.value}`);
                                                         await supabaseClient.from('produtos').update({ estoque: parseInt(e.target.value) }).eq('id', p.id);
                                                         buscarDados();
                                                     }
-                                                }} className="flex-1 bg-slate-800 p-2 rounded-lg text-center font-black text-xs border border-slate-700" />
-                                                <button onClick={async () => {
-                                                    const novoCusto = prompt("Novo Preço de Custo:", p.preco_custo);
-                                                    if(novoCusto) {
-                                                        await supabaseClient.from('produtos').update({ preco_custo: parseFloat(novoCusto) }).eq('id', p.id);
+                                                }} className={`w-12 p-2 text-center rounded-lg font-black text-xs ${p.estoque <= 5 ? 'animate-alert text-white' : 'bg-slate-800 border border-slate-700'}`} />
+                                                {userLogado.nivel === 'admin' && <button onClick={async () => {
+                                                    if(confirm(`Excluir ${p.nome}?`)) {
+                                                        await registrarLog("EXCLUSÃO", `Removeu ${p.nome}`);
+                                                        await supabaseClient.from('produtos').delete().eq('id', p.id);
                                                         buscarDados();
                                                     }
-                                                }} className="bg-slate-800 px-3 rounded-lg text-[9px] font-black uppercase border border-slate-700">Ajustar Custo</button>
+                                                }} className="text-red-500/50 p-2 text-lg">🗑️</button>}
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
-                        
-                        {/* Outras abas (equipe, logs, notas) permanecem aqui... */}
+
+                        {pagina === 'notas' && (
+                            <div className="space-y-3">
+                                <h2 className="text-2xl font-black italic text-orange-500 uppercase px-2 mb-4 tracking-tighter">Fiados</h2>
+                                {notas.map(n => (
+                                    <div key={n.id} className="bg-slate-900 border border-slate-800 p-5 rounded-3xl flex justify-between items-center shadow-xl border-l-4 border-l-orange-600">
+                                        <div>
+                                            <div className="font-black uppercase text-white text-base truncate">{n.cliente}</div>
+                                            <div className="text-orange-500 font-black text-xl mt-1">R$ {n.valor.toFixed(2)}</div>
+                                        </div>
+                                        <button onClick={async () => {
+                                            if (confirm("Recebido?")) {
+                                                await registrarLog("RECEBIMENTO", `Baixa nota: ${n.cliente} - R$ ${n.valor.toFixed(2)}`);
+                                                await supabaseClient.from('notas_pendentes').update({ pago: true }).eq('id', n.id);
+                                                buscarDados();
+                                            }
+                                        }} className="bg-green-600 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg">PAGO</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </main>
 
                     <nav className="fixed bottom-0 w-full bg-slate-900/95 backdrop-blur-md p-4 border-t border-slate-800 flex gap-2 z-40 overflow-x-auto no-scrollbar">
                         <button onClick={() => setPagina('home')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'home' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>Mesas</button>
-                        <button onClick={() => setPagina('notas')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'notas' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>Notas</button>
+                        <button onClick={() => setPagina('notas')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase relative ${pagina === 'notas' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>
+                            Notas {notas.length > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-[8px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-slate-900">{notas.length}</span>}
+                        </button>
                         <button onClick={() => setPagina('estoque')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'estoque' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>Estoque</button>
                         {userLogado.nivel === 'admin' && (
                             <>
-                            <button onClick={() => setPagina('relatorio')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'relatorio' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>💰 Lucro</button>
                             <button onClick={() => setPagina('equipe')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'equipe' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>Equipe</button>
                             <button onClick={() => setPagina('logs')} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase ${pagina === 'logs' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>Logs</button>
                             </>
                         )}
                     </nav>
-                    
-                    {/* Modal de Mesa Aberta permanece o mesmo */}
+
                     {idMesaAberta && (
                         <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[60] flex items-end">
                             <div className="bg-slate-900 w-full rounded-t-[40px] p-6 border-t border-slate-700 max-h-[95vh] flex flex-col">
@@ -322,7 +354,7 @@
                                     ))}
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => {/* Fiado ajustado com log de custo */}} className="bg-orange-600 p-5 rounded-2xl font-black uppercase text-[11px]">Fiado</button>
+                                    <button onClick={handleAnotarFiado} className="bg-orange-600 p-5 rounded-2xl font-black uppercase text-[11px]">Fiado</button>
                                     <button onClick={() => handleLimparMesa(idMesaAberta)} className="bg-red-600 p-5 rounded-2xl font-black uppercase text-[11px]">Limpar</button>
                                 </div>
                             </div>
