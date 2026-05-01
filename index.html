@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>JB ESPETO - GESTÃO PRO</title>
+    <title>JB ESPETO - SISTEMA DE GESTÃO</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -28,7 +28,7 @@
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const App = () => {
-            const [userLogado, setUserLogado] = useState(null); // Agora guarda o objeto do usuário
+            const [userLogado, setUserLogado] = useState(null);
             const [pagina, setPagina] = useState('home');
             const [mesas, setMesas] = useState(Array.from({ length: 12 }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' })));
             const [produtos, setProdutos] = useState([]);
@@ -36,6 +36,7 @@
             const [logs, setLogs] = useState([]);
             const [idMesaAberta, setIdMesaAberta] = useState(null);
             const [carregando, setCarregando] = useState(true);
+            const [tentandoLogin, setTentandoLogin] = useState(false);
 
             useEffect(() => {
                 const sessao = localStorage.getItem('jb_user_data');
@@ -68,16 +69,17 @@
                     if (nts) setNotas(nts);
 
                     // Só busca logs se for Admin
-                    if (userLogado?.nivel === 'admin') {
-                        const { data: lg } = await supabaseClient.from('logs_sistema').select('*').order('data', { ascending: false }).limit(20);
+                    const sessaoLocal = JSON.parse(localStorage.getItem('jb_user_data'));
+                    if (sessaoLocal?.nivel === 'admin') {
+                        const { data: lg } = await supabaseClient.from('logs_sistema').select('*').order('data', { ascending: false }).limit(30);
                         if (lg) setLogs(lg);
                     }
                 } catch (err) { console.error(err); }
                 setCarregando(false);
             }
 
-            // FUNÇÃO DE LOG
             async function registrarLog(acao, detalhes) {
+                if (!userLogado) return;
                 await supabaseClient.from('logs_sistema').insert([{
                     usuario: userLogado.usuario,
                     acao: acao,
@@ -87,44 +89,52 @@
 
             const realizarLogin = async (e) => {
                 e.preventDefault();
+                setTentandoLogin(true);
                 const u = e.target.usuario.value;
                 const p = e.target.senha.value;
-                const { data } = await supabaseClient.from('usuarios_gestao').select('*').eq('usuario', u).eq('senha', p).single();
+                
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('usuarios_gestao')
+                        .select('*')
+                        .eq('usuario', u)
+                        .eq('senha', p)
+                        .single();
 
-                if (data) {
-                    setUserLogado(data);
-                    localStorage.setItem('jb_user_data', JSON.stringify(data));
-                } else { alert("Usuário ou senha inválidos!"); }
+                    if (data) {
+                        setUserLogado(data);
+                        localStorage.setItem('jb_user_data', JSON.stringify(data));
+                    } else {
+                        alert("Usuário ou senha incorretos!");
+                    }
+                } catch (err) {
+                    alert("Erro ao conectar com o banco.");
+                } finally {
+                    setTentandoLogin(false);
+                }
             };
 
             const sair = () => {
                 localStorage.removeItem('jb_user_data');
                 setUserLogado(null);
+                setPagina('home');
             };
 
-            // ACOES COM LOG
+            // Funções de Ação
             async function handleExcluirProd(id, nome) {
-                if (userLogado.nivel !== 'admin') return alert("Apenas administradores!");
+                if (userLogado.nivel !== 'admin') return alert("Ação restrita ao Admin!");
                 if (confirm(`Excluir ${nome}?`)) {
-                    await registrarLog("EXCLUSÃO PRODUTO", `Removeu ${nome} do estoque`);
+                    await registrarLog("EXCLUSÃO", `Removeu o item: ${nome}`);
                     await supabaseClient.from('produtos').delete().eq('id', id);
                     buscarDados();
                 }
             }
 
             async function handleLimparMesa(id) {
-                if (confirm(`Limpar Mesa ${id}?`)) {
-                    await registrarLog("LIMPEZA MESA", `Limpou consumo da Mesa ${id}`);
+                if (confirm(`Deseja limpar a mesa ${id}?`)) {
+                    await registrarLog("LIMPEZA", `Limpou a mesa ${id}`);
                     await supabaseClient.from('pedidos').delete().eq('mesa', id);
                     setIdMesaAberta(null);
-                    buscarDados();
-                }
-            }
-
-            async function darBaixaNota(id, cliente, valor) {
-                if (confirm("Confirmar pagamento?")) {
-                    await registrarLog("PAGAMENTO NOTA", `Recebeu R$${valor} de ${cliente}`);
-                    await supabaseClient.from('notas_pendentes').update({ pago: true }).eq('id', id);
                     buscarDados();
                 }
             }
@@ -132,25 +142,25 @@
             if (!userLogado) {
                 return (
                     <div className="h-screen flex items-center justify-center bg-slate-950 p-6">
-                        <form onSubmit={realizarLogin} className="w-full max-w-sm bg-slate-900 p-8 rounded-[40px] border border-slate-800">
+                        <form onSubmit={realizarLogin} className="w-full max-w-sm bg-slate-900 p-8 rounded-[40px] border border-slate-800 shadow-2xl">
                             <h1 className="text-4xl font-black text-center text-white mb-2 italic underline decoration-orange-500 underline-offset-8">JB ESPETO</h1>
-                            <p className="text-center text-slate-500 text-[10px] uppercase font-black mb-8 tracking-[0.2em]">Gestão Hierárquica</p>
+                            <p className="text-center text-slate-500 text-[10px] uppercase font-black mb-8 tracking-[0.2em]">Acesso ao Sistema</p>
                             <input name="usuario" placeholder="Usuário" className="w-full p-4 mb-4 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700 font-bold" required />
                             <input name="senha" type="password" placeholder="Senha" className="w-full p-4 mb-6 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700 font-bold" required />
-                            <button className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black uppercase shadow-lg">Entrar</button>
+                            <button disabled={tentandoLogin} className="w-full bg-orange-600 text-white p-4 rounded-2xl font-black uppercase shadow-lg active:scale-95 transition-all">
+                                {tentandoLogin ? 'Verificando...' : 'Entrar'}
+                            </button>
                         </form>
                     </div>
                 );
             }
 
-            if (carregando) return <div className="h-screen flex items-center justify-center text-orange-500 font-black italic animate-pulse">CARREGANDO JB...</div>;
-
             return (
                 <div className="min-h-screen pb-32">
                     <header className="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center sticky top-0 z-50">
                         <div>
-                            <h1 className="font-black italic text-xl">JB <span className="text-orange-500 uppercase">Espeto</span></h1>
-                            <span className="text-[8px] font-bold bg-orange-600/20 text-orange-500 px-2 py-0.5 rounded uppercase">{userLogado.nivel}</span>
+                            <h1 className="font-black italic text-xl">JB <span className="text-orange-500 uppercase">ESPETO</span></h1>
+                            <span className="text-[8px] font-black bg-orange-600/20 text-orange-500 px-2 py-0.5 rounded uppercase tracking-widest">{userLogado.nivel}</span>
                         </div>
                         <button onClick={sair} className="text-[10px] font-black text-red-500 bg-red-500/10 px-3 py-2 rounded-lg">SAIR</button>
                     </header>
@@ -159,7 +169,7 @@
                         {pagina === 'home' && (
                             <div className="grid grid-cols-2 gap-3">
                                 {mesas.map(m => (
-                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all active:scale-95 ${m.total > 0 ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-800 border-slate-700 opacity-60'}`}>
+                                    <div key={m.id} onClick={() => setIdMesaAberta(m.id)} className={`p-4 rounded-2xl border-2 transition-all ${m.total > 0 ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-800 border-slate-700 opacity-50'}`}>
                                         <div className="text-[10px] font-black uppercase text-white/70 italic">Mesa {m.id}</div>
                                         <div className="text-xl font-black text-white">R$ {m.total.toFixed(2)}</div>
                                         {m.apelido && <div className="text-[9px] bg-black/30 p-1 mt-1 rounded font-bold uppercase truncate text-center">{m.apelido}</div>}
@@ -170,15 +180,15 @@
 
                         {pagina === 'logs' && userLogado.nivel === 'admin' && (
                             <div className="space-y-3">
-                                <h2 className="text-xl font-black italic text-orange-500 uppercase px-2 mb-4">Histórico de Ações</h2>
+                                <h2 className="text-xl font-black italic text-orange-500 uppercase px-2 mb-4">Registro de Atividade</h2>
                                 {logs.map(l => (
-                                    <div key={l.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 text-[10px]">
-                                        <div className="flex justify-between font-black text-slate-500 mb-1">
-                                            <span>👤 {l.usuario.toUpperCase()}</span>
+                                    <div key={l.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 border-l-4 border-l-slate-700">
+                                        <div className="flex justify-between font-black text-slate-500 text-[9px] mb-1">
+                                            <span className="uppercase">👤 {l.usuario}</span>
                                             <span>{new Date(l.data).toLocaleString('pt-BR')}</span>
                                         </div>
-                                        <div className="text-white font-bold uppercase text-xs">{l.acao}</div>
-                                        <div className="text-slate-400 italic mt-1">{l.detalhes}</div>
+                                        <div className="text-orange-500 font-black uppercase text-xs">{l.acao}</div>
+                                        <div className="text-slate-400 text-[10px] italic mt-1 leading-tight">{l.detalhes}</div>
                                     </div>
                                 ))}
                             </div>
@@ -186,38 +196,38 @@
 
                         {pagina === 'estoque' && (
                             <div className="space-y-6">
-                                {userLogado.nivel === 'admin' ? (
+                                {userLogado.nivel === 'admin' && (
                                     <form onSubmit={async (e) => {
                                         e.preventDefault();
-                                        const nome = e.target.n.value;
-                                        await registrarLog("NOVO PRODUTO", `Cadastrou ${nome}`);
-                                        await supabaseClient.from('produtos').insert([{ nome, preco: parseFloat(e.target.p.value), estoque: parseInt(e.target.e.value) }]);
+                                        const n = e.target.n.value;
+                                        await registrarLog("NOVO ITEM", `Cadastrou: ${n}`);
+                                        await supabaseClient.from('produtos').insert([{ nome: n, preco: parseFloat(e.target.p.value), estoque: parseInt(e.target.e.value) }]);
                                         e.target.reset(); buscarDados();
                                     }} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 shadow-xl space-y-3">
-                                        <h2 className="text-[11px] font-black text-orange-500 uppercase tracking-widest px-1">Novo Item</h2>
+                                        <h2 className="text-[11px] font-black text-orange-500 uppercase px-1">Novo Produto</h2>
                                         <input name="n" placeholder="Nome" className="w-full p-4 bg-slate-800 rounded-xl outline-none border border-slate-700 text-sm font-bold" required />
                                         <div className="flex gap-2">
                                             <input name="p" step="0.01" type="number" placeholder="Preço" className="flex-1 p-4 bg-slate-800 rounded-xl border border-slate-700 text-sm font-bold" required />
-                                            <input name="e" type="number" placeholder="Estoque" className="w-24 p-4 bg-slate-800 rounded-xl border border-slate-700 text-sm font-bold" required />
+                                            <input name="e" type="number" placeholder="Qtd" className="w-24 p-4 bg-slate-800 rounded-xl border border-slate-700 text-sm font-bold" required />
                                         </div>
-                                        <button className="w-full bg-orange-600 p-4 rounded-xl font-black uppercase text-xs shadow-lg">Salvar no Cardápio</button>
+                                        <button className="w-full bg-orange-600 p-4 rounded-xl font-black uppercase text-xs shadow-lg">Adicionar ao Cardápio</button>
                                     </form>
-                                ) : (
-                                    <div className="bg-orange-600/10 border border-orange-600/20 p-4 rounded-2xl text-orange-500 text-[10px] font-black text-center uppercase">Apenas Admins podem cadastrar produtos</div>
                                 )}
 
                                 <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800">
-                                    <h2 className="text-[10px] font-black text-slate-500 uppercase mb-4 px-2 tracking-widest">Itens Ativos</h2>
+                                    <h2 className="text-[10px] font-black text-slate-500 uppercase mb-4 px-2 tracking-widest">Estoque Atual</h2>
                                     {produtos.map(p => (
                                         <div key={p.id} className="flex justify-between items-center py-4 border-b border-slate-800 last:border-0">
                                             <div className="flex-1 pr-2 uppercase font-black text-sm">{p.nome} <br/><span className="text-orange-500 text-[10px]">R$ {p.preco.toFixed(2)}</span></div>
                                             <div className="flex items-center gap-3">
                                                 <input type="number" disabled={userLogado.nivel !== 'admin'} defaultValue={p.estoque} onBlur={async (e) => {
-                                                    await registrarLog("AJUSTE ESTOQUE", `Alterou ${p.nome} para ${e.target.value}`);
-                                                    await supabaseClient.from('produtos').update({ estoque: parseInt(e.target.value) }).eq('id', p.id);
-                                                    buscarDados();
-                                                }} className={`w-12 p-2 text-center rounded-lg font-black text-xs ${p.estoque <= 5 ? 'animate-alert text-white' : 'bg-slate-800 border border-slate-700 text-slate-300'}`} />
-                                                {userLogado.nivel === 'admin' && <button onClick={() => handleExcluirProd(p.id, p.nome)} className="text-red-500/40 p-2 text-lg">🗑️</button>}
+                                                    if(userLogado.nivel === 'admin') {
+                                                        await registrarLog("AJUSTE", `Estoque de ${p.nome}: ${e.target.value}`);
+                                                        await supabaseClient.from('produtos').update({ estoque: parseInt(e.target.value) }).eq('id', p.id);
+                                                        buscarDados();
+                                                    }
+                                                }} className={`w-12 p-2 text-center rounded-lg font-black text-xs ${p.estoque <= 5 ? 'animate-alert text-white' : 'bg-slate-800 border border-slate-700'}`} />
+                                                {userLogado.nivel === 'admin' && <button onClick={() => handleExcluirProd(p.id, p.nome)} className="text-red-500/50 p-2 text-lg">🗑️</button>}
                                             </div>
                                         </div>
                                     ))}
@@ -227,43 +237,44 @@
 
                         {pagina === 'notas' && (
                             <div className="space-y-3">
-                                <h2 className="text-2xl font-black italic text-orange-500 uppercase px-2 mb-4 tracking-tighter">Notas Pendentes</h2>
-                                {notas.length === 0 && <p className="text-center py-20 text-slate-600 font-black uppercase italic text-sm">Tudo pago por aqui!</p>}
+                                <h2 className="text-2xl font-black italic text-orange-500 uppercase px-2 mb-4">Notas</h2>
+                                {notas.length === 0 && <p className="text-center py-20 text-slate-600 font-black uppercase italic text-sm">Sem fiados pendentes.</p>}
                                 {notas.map(n => (
-                                    <div key={n.id} className="bg-slate-900 border border-slate-800 p-5 rounded-3xl flex justify-between items-center shadow-xl border-l-4 border-l-orange-600">
+                                    <div key={n.id} className="bg-slate-900 border border-slate-800 p-5 rounded-3xl flex justify-between items-center border-l-4 border-l-orange-600">
                                         <div>
-                                            <div className="font-black uppercase text-white text-base truncate">{n.cliente}</div>
-                                            <div className="text-[9px] font-bold text-slate-500 mt-1">{new Date(n.data).toLocaleDateString('pt-BR')} às {new Date(n.data).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
+                                            <div className="font-black uppercase text-white text-base truncate max-w-[150px]">{n.cliente}</div>
+                                            <div className="text-[9px] font-bold text-slate-500 mt-1">{new Date(n.data).toLocaleDateString('pt-BR')}</div>
                                             <div className="text-orange-500 font-black text-xl mt-1">R$ {n.valor.toFixed(2)}</div>
                                         </div>
-                                        <button onClick={() => darBaixaNota(n.id, n.cliente, n.valor)} className="bg-green-600 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-90 transition-all">Receber</button>
+                                        <button onClick={async () => {
+                                            if (confirm("Confirmar recebimento?")) {
+                                                await registrarLog("PAGO", `Recebeu R$${n.valor} de ${n.cliente}`);
+                                                await supabaseClient.from('notas_pendentes').update({ pago: true }).eq('id', n.id);
+                                                buscarDados();
+                                            }
+                                        }} className="bg-green-600 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg">Receber</button>
                                     </div>
                                 ))}
                             </div>
                         )}
                     </main>
 
-                    {/* Navbar Inteligente */}
                     <nav className="fixed bottom-0 w-full bg-slate-900/95 backdrop-blur-md p-4 border-t border-slate-800 flex gap-2 z-40">
-                        <button onClick={() => setPagina('home')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] ${pagina === 'home' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/30' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
-                        <button onClick={() => setPagina('notas')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] relative ${pagina === 'notas' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/30' : 'bg-slate-800 text-slate-500'}`}>
-                            NOTAS {notas.length > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-[8px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-slate-900 animate-bounce">{notas.length}</span>}
+                        <button onClick={() => setPagina('home')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] ${pagina === 'home' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>MESAS</button>
+                        <button onClick={() => setPagina('notas')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] relative ${pagina === 'notas' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>
+                            NOTAS {notas.length > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-[8px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-slate-900">{notas.length}</span>}
                         </button>
-                        <button onClick={() => setPagina('estoque')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] ${pagina === 'estoque' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/30' : 'bg-slate-800 text-slate-500'}`}>ESTOQUE</button>
+                        <button onClick={() => setPagina('estoque')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] ${pagina === 'estoque' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>ESTOQUE</button>
                         {userLogado.nivel === 'admin' && (
-                            <button onClick={() => setPagina('logs')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] ${pagina === 'logs' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/30' : 'bg-slate-800 text-slate-500'}`}>LOGS</button>
+                            <button onClick={() => setPagina('logs')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] ${pagina === 'logs' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>LOGS</button>
                         )}
                     </nav>
 
-                    {/* Modal de Mesa */}
                     {idMesaAberta && (
                         <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[60] flex items-end">
                             <div className="bg-slate-900 w-full rounded-t-[40px] p-6 border-t border-slate-700 max-h-[95vh] flex flex-col">
                                 <div className="flex justify-between items-start mb-6">
-                                    <div>
-                                        <h2 className="text-3xl font-black text-orange-500 uppercase italic">Mesa {idMesaAberta}</h2>
-                                        <p className="text-[10px] font-black text-slate-400 uppercase mt-2 italic">📌 {mesas.find(m=>m.id===idMesaAberta).apelido || 'Sem Apelido'}</p>
-                                    </div>
+                                    <h2 className="text-3xl font-black text-orange-500 uppercase italic">Mesa {idMesaAberta}</h2>
                                     <button onClick={() => setIdMesaAberta(null)} className="bg-slate-800 text-white w-10 h-10 rounded-full font-bold">✕</button>
                                 </div>
 
@@ -304,13 +315,13 @@
                                         if (mesa.total <= 0) return;
                                         const clie = prompt("Nome do Cliente:", mesa.apelido);
                                         if(clie) {
-                                            await registrarLog("CONTA PENDURADA", `Anotou R$${mesa.total} para ${clie}`);
+                                            await registrarLog("FIADO", `Mesa ${idMesaAberta} -> Fiado de R$${mesa.total} para ${clie}`);
                                             await supabaseClient.from('notas_pendentes').insert([{ cliente: clie.toUpperCase(), valor: mesa.total }]);
                                             await supabaseClient.from('pedidos').delete().eq('mesa', idMesaAberta);
                                             setIdMesaAberta(null); buscarDados();
                                         }
-                                    }} className="bg-orange-600 p-5 rounded-2xl font-black uppercase text-[11px] shadow-lg">Anotar Fiado</button>
-                                    <button onClick={() => handleLimparMesa(idMesaAberta)} className="bg-red-600 p-5 rounded-2xl font-black uppercase text-[11px] shadow-lg">Limpar Mesa</button>
+                                    }} className="bg-orange-600 p-5 rounded-2xl font-black uppercase text-[11px]">Anotar Fiado</button>
+                                    <button onClick={() => handleLimparMesa(idMesaAberta)} className="bg-red-600 p-5 rounded-2xl font-black uppercase text-[11px]">Limpar Mesa</button>
                                 </div>
                             </div>
                         </div>
