@@ -74,7 +74,7 @@
             switch (c) {
                 case 'CERVEJA': return 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
                 case 'BAR': return 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
-                case 'DOSE': return 'bg-purple-500/20 text-purple-400 border border-purple-500/30';
+                case 'DOSE': case 'DOSES': return 'bg-purple-500/20 text-purple-400 border border-purple-500/30';
                 case 'ESPETO': return 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
                 case 'COZINHA': return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
                 default: return 'bg-slate-700/50 text-slate-400 border border-slate-600/30';
@@ -97,6 +97,7 @@
             });
 
             const [produtos, setProdutos] = useState([]);
+            const [categoriasDb, setCategoriasDb] = useState(null); // Inicializa como null para controle de carregamento correto
             const [notas, setNotas] = useState([]);
             const [logs, setLogs] = useState([]);
             const [equipe, setEquipe] = useState([]);
@@ -110,21 +111,34 @@
             const [paginaLog, setPaginaLog] = useState(1);
             const logsPorPagina = 30;
 
-            // Mapeamento de categorias e emojis para renderização do filtro de atendimento
-            const categoriasAtendimento = useMemo(() => [
-                { id: 'Todos', label: 'Todos', emoji: '🍽️' },
-                { id: 'Cerveja', label: 'Cerveja', emoji: '🍺' },
-                { id: 'Bar', label: 'Bar', emoji: '🍹' },
-                { id: 'Dose', label: 'Dose', emoji: '🥃' },
-                { id: 'Espeto', label: 'Espeto', emoji: '🍢' },
-                { id: 'Cozinha', label: 'Cozinha', emoji: '🍳' },
-                { id: 'Outros', label: 'Outros', emoji: '📦' }
-            ], []);
-
             const buscarDados = useCallback(async () => {
                 try {
                     const { data: prods } = await supabaseClient.from('produtos').select('*').order('nome');
                     if (prods) setProdutos(prods);
+
+                    // Busca categorias dinâmicas do banco de dados
+                    const { data: cats, error: catsError } = await supabaseClient.from('categorias').select('*').order('nome');
+                    if (cats) {
+                        if (cats.length === 0) {
+                            // Se a tabela estiver vazia, semeamos as padrões originais para facilitar o gerenciamento
+                            const padroes = [
+                                { nome: 'Cerveja', emoji: '🍺' },
+                                { nome: 'Bar', emoji: '🍹' },
+                                { nome: 'Espeto', emoji: '🍢' },
+                                { nome: 'Doses', emoji: '🥃' },
+                                { nome: 'Cozinha', emoji: '🍳' },
+                                { nome: 'Outros', emoji: '📦' }
+                            ];
+                            await supabaseClient.from('categorias').insert(padroes);
+                            const { data: recats } = await supabaseClient.from('categorias').select('*').order('nome');
+                            if (recats) setCategoriasDb(recats);
+                        } else {
+                            setCategoriasDb(cats);
+                        }
+                    } else if (catsError) {
+                        // Mantém como null se a tabela ainda não tiver sido criada
+                        setCategoriasDb(null);
+                    }
 
                     const { data: pedidos } = await supabaseClient.from('pedidos').select('*');
                     const novasMesas = Array.from({ length: qtdMesas }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' }));
@@ -150,6 +164,38 @@
                     if (eq) setEquipe(eq);
                 } catch (e) { console.error(e); }
             }, [qtdMesas]);
+
+            // Mapeamento de categorias unificadas (Une o 'Todos' virtual com as categorias reais do banco de dados)
+            const categoriasAtendimento = useMemo(() => {
+                const listaUnificada = [
+                    { id: 'Todos', label: 'Todos', emoji: '🍽️', nome: 'Todos' }
+                ];
+                
+                if (categoriasDb === null) {
+                    // Fallback visual apenas enquanto carrega do banco de dados
+                    return [
+                        { id: 'Todos', label: 'Todos', emoji: '🍽️', nome: 'Todos' },
+                        { id: 'Cerveja', label: 'Cerveja', emoji: '🍺', nome: 'Cerveja' },
+                        { id: 'Bar', label: 'Bar', emoji: '🍹', nome: 'Bar' },
+                        { id: 'Espeto', label: 'Espeto', emoji: '🍢', nome: 'Espeto' },
+                        { id: 'Doses', label: 'Doses', emoji: '🥃', nome: 'Doses' },
+                        { id: 'Cozinha', label: 'Cozinha', emoji: '🍳', nome: 'Cozinha' },
+                        { id: 'Outros', label: 'Outros', emoji: '📦', nome: 'Outros' }
+                    ];
+                }
+
+                // Se carregou do banco de dados (mesmo que esteja vazio), renderiza estritamente os cadastros reais
+                categoriasDb.forEach(c => {
+                    listaUnificada.push({
+                        id: c.nome,
+                        label: c.nome,
+                        nome: c.nome,
+                        emoji: c.emoji || '📦'
+                    });
+                });
+                
+                return listaUnificada;
+            }, [categoriasDb]);
 
             useEffect(() => {
                 const sessao = safeGetItem('jb_user_data', null);
@@ -496,7 +542,58 @@
 
                         {pagina === 'estoque' && userLogado.nivel === 'admin' && (
                             <div className="space-y-4">
-                                {/* Formulário de Novo Produto Atualizado */}
+                                {/* Seção de Gerenciamento Estrito de Etiquetas (Categorias) */}
+                                <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-4">
+                                    <h3 className="text-xs font-black uppercase text-orange-500 italic">Etiquetas (Categorias)</h3>
+                                    
+                                    {/* Formulário de Nova Categoria */}
+                                    <form onSubmit={async (e) => {
+                                        e.preventDefault();
+                                        const nome = e.target.catNome.value.trim();
+                                        const emoji = e.target.catEmoji.value.trim() || '📦';
+                                        if (!nome) return;
+                                        try {
+                                            const { error } = await supabaseClient.from('categorias').insert([{ nome, emoji }]);
+                                            if (error) throw error;
+                                            registrarLog("ESTOQUE", `Nova categoria: ${nome} [${emoji}]`);
+                                            e.target.reset();
+                                            buscarDados();
+                                        } catch (err) {
+                                            console.error(err);
+                                            alert("Erro ao salvar categoria (talvez uma etiqueta com esse nome já exista).");
+                                        }
+                                    }} className="space-y-3">
+                                        <div className="grid grid-cols-4 gap-2">
+                                            <input name="catEmoji" placeholder="EMOJI (ex: 🍻)" maxLength="2" className="bg-slate-800 p-3 rounded-xl outline-none text-sm text-center font-bold text-white border border-slate-700/50" />
+                                            <input name="catNome" placeholder="NOME DA CATEGORIA" className="col-span-3 bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase text-white border border-slate-700/50" required />
+                                        </div>
+                                        <button className="w-full bg-orange-600 hover:bg-orange-700 transition-colors p-3 rounded-xl font-black uppercase text-xs text-white">Criar Categoria</button>
+                                    </form>
+
+                                    {/* Listagem das Etiquetas com Botão Real de Excluir */}
+                                    <div className="pt-2 border-t border-slate-800/60">
+                                        <div className="text-[10px] font-black text-slate-500 uppercase mb-2">Categorias Cadastradas:</div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {categoriasDb && categoriasDb.map(c => (
+                                                <div key={c.id} className="bg-slate-800 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-2 border border-slate-700 select-none">
+                                                    <span>{c.emoji} {c.nome}</span>
+                                                    <button type="button" onClick={async () => {
+                                                        if (confirm(`Deseja realmente excluir a etiqueta "${c.nome}"?`)) {
+                                                            await supabaseClient.from('categorias').delete().eq('id', c.id);
+                                                            registrarLog("ESTOQUE", `Categoria removida: ${c.nome}`);
+                                                            buscarDados();
+                                                        }
+                                                    }} className="text-red-500 font-bold hover:text-red-400 transition-colors">✕</button>
+                                                </div>
+                                            ))}
+                                            {(!categoriasDb || categoriasDb.length === 0) && (
+                                                <div className="text-[10px] text-slate-500 uppercase font-black tracking-wider">Nenhuma etiqueta personalizada registrada.</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Formulário de Novo Produto */}
                                 <form onSubmit={async (e) => {
                                     e.preventDefault();
                                     const nome = e.target.nome.value;
@@ -527,15 +624,15 @@
                                     <div className="grid grid-cols-2 gap-2">
                                         <input name="estoque" type="number" placeholder="ESTOQUE INICIAL" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white" required />
                                         <select name="categoria" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-slate-300 uppercase">
-                                            <option value="Cerveja">Cerveja</option>
-                                            <option value="Bar">Bar</option>
-                                            <option value="Dose">Dose</option>
-                                            <option value="Espeto">Espeto</option>
-                                            <option value="Cozinha">Cozinha</option>
-                                            <option value="Outros">Outros</option>
+                                            {categoriasAtendimento
+                                                .filter(cat => cat.id !== 'Todos')
+                                                .map(cat => (
+                                                    <option key={cat.id} value={cat.nome}>{cat.nome}</option>
+                                                ))
+                                            }
                                         </select>
                                     </div>
-                                    <button className="w-full bg-orange-600 p-3 rounded-xl font-black uppercase text-xs">Adicionar</button>
+                                    <button className="w-full bg-orange-600 p-3 rounded-xl font-black uppercase text-xs">Adicionar Produto</button>
                                 </form>
 
                                 {/* Listagem do Estoque */}
@@ -853,12 +950,12 @@
                                         <div>
                                             <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Categoria</label>
                                             <select name="editCategoria" defaultValue={produtoEditando.categoria || 'Outros'} className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-slate-300 uppercase border border-slate-700/50">
-                                                <option value="Cerveja">Cerveja</option>
-                                                <option value="Bar">Bar</option>
-                                                <option value="Dose">Dose</option>
-                                                <option value="Espeto">Espeto</option>
-                                                <option value="Cozinha">Cozinha</option>
-                                                <option value="Outros">Outros</option>
+                                                {categoriasAtendimento
+                                                    .filter(cat => cat.id !== 'Todos')
+                                                    .map(cat => (
+                                                        <option key={cat.id} value={cat.nome}>{cat.nome}</option>
+                                                    ))
+                                                }
                                             </select>
                                         </div>
                                     </div>
@@ -904,7 +1001,7 @@
                                     />
                                 </div>
 
-                                {/* Filtro de Categorias em Destaque */}
+                                {/* Filtro de Categorias Dinâmico (Scroll Horizontal com Emojis) */}
                                 <div className="flex gap-2.5 overflow-x-auto no-scrollbar mb-3 pb-1 select-none">
                                     {categoriasAtendimento.map(cat => (
                                         <button
@@ -923,8 +1020,8 @@
                                     ))}
                                 </div>
 
-                                {/* Listagem de Produtos com Altura Controlada (30% da tela) */}
-                                <div className="max-h-[30vh] overflow-y-auto grid grid-cols-2 gap-2 mb-4 pr-1">
+                                {/* Listagem de Produtos Filtrada com Quantidade de Estoque */}
+                                <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-2 mb-4 pr-1 max-h-[30vh]">
                                     {produtos
                                         .filter(p => {
                                             // Filtra por Categoria selecionada
