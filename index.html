@@ -65,6 +65,9 @@
             if (acaoLimpa.includes('PAGO') || acaoLimpa.includes('VENDA') || acaoLimpa.includes('RECEB')) {
                 return 'bg-green-500/20 text-green-400 border border-green-500/30';
             }
+            if (acaoLimpa.includes('GASTO')) {
+                return 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+            }
             return 'bg-slate-700/50 text-slate-300 border border-slate-600/30';
         };
 
@@ -85,7 +88,7 @@
             const [userLogado, setUserLogado] = useState(null);
             const [pagina, setPagina] = useState('home');
             
-            // Inicialização dinâmica que se sincroniza com o Supabase
+            // Inicialização segura de mesas
             const [qtdMesas, setQtdMesas] = useState(() => {
                 const num = Number(safeGetItem('jb_qtd_mesas', '12'));
                 return (num && num > 0) ? num : 12;
@@ -97,62 +100,45 @@
             });
 
             const [produtos, setProdutos] = useState([]);
-            const [categoriasDb, setCategoriasDb] = useState(null); // Inicializa como null para controle de carregamento correto
+            
+            // Inicializa as categorias padrão diretamente no estado para evitar falhas locais offline
+            const [categoriasDb, setCategoriasDb] = useState([
+                { nome: 'Cerveja', emoji: '🍺' },
+                { nome: 'Bar', emoji: '🍹' },
+                { nome: 'Espeto', emoji: '🍢' },
+                { nome: 'Doses', emoji: '🥃' },
+                { nome: 'Cozinha', emoji: '🍳' },
+                { nome: 'Outros', emoji: '📦' }
+            ]); 
+            
             const [notas, setNotas] = useState([]);
             const [logs, setLogs] = useState([]);
+            const [gastos, setGastos] = useState([]); 
             const [equipe, setEquipe] = useState([]);
             const [idMesaAberta, setIdMesaAberta] = useState(null);
             const [buscaProduto, setBuscaProduto] = useState('');
-            const [categoriaSelecionada, setCategoriaSelecionada] = useState('Todos'); // Estado para filtrar categoria no atendimento
-            const [produtoEditando, setProdutoEditando] = useState(null); // Estado para controlar o modal de edição de estoque
+            const [categoriaSelecionada, setCategoriaSelecionada] = useState('Todos'); 
+            const [produtoEditando, setProdutoEditando] = useState(null); 
 
             // Estados adicionais para filtro e paginação de Logs
             const [filtroUsuarioLog, setFiltroUsuarioLog] = useState('');
             const [paginaLog, setPaginaLog] = useState(1);
             const logsPorPagina = 30;
 
-            // Mapeamento de categorias unificadas (Une o 'Todos' virtual com as categorias reais do banco de dados)
-            const categoriasAtendimento = useMemo(() => {
-                const listaUnificada = [
-                    { id: 'Todos', label: 'Todos', emoji: '🍽️', nome: 'Todos' }
-                ];
-                
-                if (categoriasDb === null) {
-                    // Fallback visual apenas enquanto carrega do banco de dados
-                    return [
-                        { id: 'Todos', label: 'Todos', emoji: '🍽️', nome: 'Todos' },
-                        { id: 'Cerveja', label: 'Cerveja', emoji: '🍺', nome: 'Cerveja' },
-                        { id: 'Bar', label: 'Bar', emoji: '🍹', nome: 'Bar' },
-                        { id: 'Espeto', label: 'Espeto', emoji: '🍢', nome: 'Espeto' },
-                        { id: 'Doses', label: 'Doses', emoji: '🥃', nome: 'Doses' },
-                        { id: 'Cozinha', label: 'Cozinha', emoji: '🍳', nome: 'Cozinha' },
-                        { id: 'Outros', label: 'Outros', emoji: '📦', nome: 'Outros' }
-                    ];
-                }
-
-                // Se carregou do banco de dados (mesmo que esteja vazio), renderiza estritamente os cadastros reais
-                categoriasDb.forEach(c => {
-                    listaUnificada.push({
-                        id: c.nome,
-                        label: c.nome,
-                        nome: c.nome,
-                        emoji: c.emoji || '📦'
-                    });
-                });
-                
-                return listaUnificada;
-            }, [categoriasDb]);
-
+            // Método de busca tradicional sem desestruturação de aliases (Previne travamento do Babel ao testar offline)
             const buscarDados = useCallback(async () => {
                 try {
-                    const { data: prods } = await supabaseClient.from('produtos').select('*').order('nome');
-                    if (prods) setProdutos(prods);
+                    // 1. Carrega Produtos
+                    const resProds = await supabaseClient.from('produtos').select('*').order('nome');
+                    if (resProds && resProds.data) {
+                        setProdutos(resProds.data);
+                    }
 
-                    // Busca categorias dinâmicas do banco de dados
-                    const { data: cats, error: catsError } = await supabaseClient.from('categorias').select('*').order('nome');
-                    if (cats) {
-                        if (cats.length === 0) {
-                            // Se a tabela estiver vazia, semeamos as padrões originais para facilitar o gerenciamento
+                    // 2. Carrega Categorias Dinâmicas (Se der erro offline, mantém as padrões sem quebrar)
+                    const resCats = await supabaseClient.from('categorias').select('*').order('nome');
+                    if (resCats && Array.isArray(resCats.data)) {
+                        if (resCats.data.length === 0) {
+                            // Se a tabela existe mas está vazia, o sistema semeia as de fábrica automaticamente
                             const padroes = [
                                 { nome: 'Cerveja', emoji: '🍺' },
                                 { nome: 'Bar', emoji: '🍹' },
@@ -162,34 +148,34 @@
                                 { nome: 'Outros', emoji: '📦' }
                             ];
                             await supabaseClient.from('categorias').insert(padroes);
-                            const { data: recats } = await supabaseClient.from('categorias').select('*').order('nome');
-                            if (recats) setCategoriasDb(recats);
+                            const resRecats = await supabaseClient.from('categorias').select('*').order('nome');
+                            if (resRecats && resRecats.data) {
+                                setCategoriasDb(resRecats.data);
+                            }
                         } else {
-                            setCategoriasDb(cats);
+                            setCategoriasDb(resCats.data);
                         }
-                    } else if (catsError) {
-                        // Mantém como null se a tabela ainda não tiver sido criada
-                        setCategoriasDb(null);
                     }
 
-                    // Sincronização global da quantidade de mesas através do banco
-                    const { data: config } = await supabaseClient.from('configuracoes_sistema').select('*').eq('chave', 'qtd_mesas').single();
+                    // 3. Carrega Quantidade de Mesas Sincronizada
+                    const resConfig = await supabaseClient.from('configuracoes_sistema').select('*').eq('chave', 'qtd_mesas').single();
                     let mesasCount = qtdMesas;
-                    if (config) {
-                        const num = Number(config.valor);
+                    if (resConfig && resConfig.data) {
+                        const num = Number(resConfig.data.valor);
                         if (num && num > 0) {
                             mesasCount = num;
                             if (num !== qtdMesas) {
                                 setQtdMesas(num);
-                                safeSetItem('jb_qtd_mesas', num); // Atualiza cache rápido local
+                                safeSetItem('jb_qtd_mesas', num);
                             }
                         }
                     }
 
-                    const { data: pedidos } = await supabaseClient.from('pedidos').select('*');
+                    // 4. Carrega Consumos Ativos (Pedidos)
+                    const resPedidos = await supabaseClient.from('pedidos').select('*');
                     const novasMesas = Array.from({ length: mesasCount }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' }));
-                    if (pedidos) {
-                        pedidos.forEach(p => {
+                    if (resPedidos && resPedidos.data) {
+                        resPedidos.data.forEach(p => {
                             const idx = p.mesa - 1;
                             if (novasMesas[idx]) {
                                 novasMesas[idx].itens.push(p);
@@ -200,16 +186,60 @@
                     }
                     setMesas(novasMesas);
 
-                    const { data: nts } = await supabaseClient.from('notas_pendentes').select('*').eq('pago', false).order('data', { ascending: false });
-                    if (nts) setNotas(nts);
+                    // 5. Carrega Notas Pendentes
+                    const resNotas = await supabaseClient.from('notas_pendentes').select('*').eq('pago', false).order('data', { ascending: false });
+                    if (resNotas && resNotas.data) {
+                        setNotas(resNotas.data);
+                    }
 
-                    const { data: lg } = await supabaseClient.from('logs_sistema').select('*').order('data', { ascending: false }).limit(1000);
-                    if (lg) setLogs(lg);
+                    // 6. Carrega Histórico de Logs
+                    const resLogs = await supabaseClient.from('logs_sistema').select('*').order('data', { ascending: false }).limit(1000);
+                    if (resLogs && resLogs.data) {
+                        setLogs(resLogs.data);
+                    }
 
-                    const { data: eq = [] } = await supabaseClient.from('usuarios_gestao').select('id, usuario, nivel').order('usuario');
-                    if (eq) setEquipe(eq);
-                } catch (e) { console.error(e); }
+                    // 7. Carrega Listagem de Gastos / Insumos
+                    const resGastos = await supabaseClient.from('gastos').select('*').order('data', { ascending: false });
+                    if (resGastos && resGastos.data) {
+                        setGastos(resGastos.data);
+                    }
+
+                    // 8. Carrega Membros da Equipe
+                    const resEquipe = await supabaseClient.from('usuarios_gestao').select('id, usuario, nivel').order('usuario');
+                    if (resEquipe && resEquipe.data) {
+                        setEquipe(resEquipe.data);
+                    }
+                } catch (e) { 
+                    console.error("Erro na busca local de dados:", e); 
+                }
             }, [qtdMesas]);
+
+            // Mapeamento unificado de categorias (Evita loops de compilação do Babel)
+            const categoriasAtendimento = useMemo(() => {
+                const listaUnificada = [
+                    { id: 'Todos', label: 'Todos', emoji: '🍽️', nome: 'Todos' }
+                ];
+                
+                const fontes = categoriasDb || [
+                    { nome: 'Cerveja', emoji: '🍺' },
+                    { nome: 'Bar', emoji: '🍹' },
+                    { nome: 'Espeto', emoji: '🍢' },
+                    { nome: 'Doses', emoji: 'Doses', emoji: '🥃' },
+                    { nome: 'Cozinha', emoji: '🍳' },
+                    { nome: 'Outros', emoji: '📦' }
+                ];
+
+                fontes.forEach(c => {
+                    listaUnificada.push({
+                        id: c.nome,
+                        label: c.nome,
+                        nome: c.nome,
+                        emoji: c.emoji || '📦'
+                    });
+                });
+                
+                return listaUnificada;
+            }, [categoriasDb]);
 
             useEffect(() => {
                 const sessao = safeGetItem('jb_user_data', null);
@@ -238,7 +268,130 @@
                 buscarDados();
             };
 
-            // ---- SALVAR QUANTIDADE DE MESAS NO BANCO DE DADOS ----
+            // ---- FUNÇÕES ASSÍNCRONAS EXTERNALIZADAS DO JSX (EVITA CRASH NO COMPILADOR) ----
+            
+            const realizarLogin = async (e) => {
+                e.preventDefault();
+                try {
+                    const { data } = await supabaseClient.from('usuarios_gestao').select('*').eq('usuario', e.target.u.value.toLowerCase()).eq('senha', e.target.s.value).single();
+                    if (data) { 
+                        setUserLogado(data); 
+                        safeSetItem('jb_user_data', JSON.stringify(data)); 
+                        buscarDados(); 
+                    }
+                    else alert("Credenciais incorretas");
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            const adicionarNovaCategoria = async (e) => {
+                e.preventDefault();
+                const nome = e.target.catNome.value.trim();
+                const emoji = e.target.catEmoji.value.trim() || '📦';
+                if (!nome) return;
+                try {
+                    const { error } = await supabaseClient.from('categorias').insert([{ nome, emoji }]);
+                    if (error) throw error;
+                    registrarLog("ESTOQUE", `Nova categoria: ${nome} [${emoji}]`);
+                    e.target.reset();
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                    alert("Erro ao salvar categoria (talvez uma etiqueta com esse nome já exista).");
+                }
+            };
+
+            const adicionarNovoProduto = async (e) => {
+                e.preventDefault();
+                const nome = e.target.nome.value;
+                const preco_compra = parseFloat(e.target.preco_compra.value) || 0;
+                const preco = parseFloat(e.target.preco.value) || 0;
+                const estoque = parseInt(e.target.estoque.value) || 0;
+                const categoria = e.target.categoria.value;
+
+                try {
+                    await supabaseClient.from('produtos').insert([{ 
+                        nome, 
+                        preco_compra, 
+                        preco, 
+                        estoque, 
+                        categoria 
+                    }]);
+                    registrarLog("ESTOQUE", `Novo item: ${nome} [${categoria}] - Compra: R$ ${preco_compra.toFixed(2)} / Venda: R$ ${preco.toFixed(2)}`);
+                    e.target.reset();
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            const atualizarProduto = async (e) => {
+                e.preventDefault();
+                const nome = e.target.editNome.value;
+                const preco_compra = parseFloat(e.target.editPrecoCompra.value) || 0;
+                const preco = parseFloat(e.target.editPreco.value) || 0;
+                const estoque = parseInt(e.target.editEstoque.value) || 0;
+                const categoria = e.target.editCategoria.value;
+                
+                try {
+                    await supabaseClient.from('produtos').update({ 
+                        nome, 
+                        preco_compra, 
+                        preco, 
+                        estoque, 
+                        categoria 
+                    }).eq('id', produtoEditando.id);
+                    
+                    registrarLog("EDIÇÃO", `Alterou ${produtoEditando.nome} -> Compra: R$ ${preco_compra.toFixed(2)} / Venda: R$ ${preco.toFixed(2)} / Est: ${estoque} / Cat: ${categoria}`);
+                    setProdutoEditando(null);
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            const adicionarNovoUsuario = async (e) => {
+                e.preventDefault();
+                const usuario = e.target.usuario.value.toLowerCase();
+                const senha = e.target.senha.value;
+                const nivel = e.target.nivel.value;
+                try {
+                    await supabaseClient.from('usuarios_gestao').insert([{ usuario, senha, nivel }]);
+                    registrarLog("EQUIPE", `Novo membro: ${usuario}`);
+                    e.target.reset();
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            const adicionarNovoGasto = async (e) => {
+                e.preventDefault();
+                const descricao = e.target.descricao.value.trim();
+                const valor = parseFloat(e.target.valor.value) || 0;
+                if (!descricao || valor <= 0) return;
+
+                try {
+                    const { error } = await supabaseClient.from('gastos').insert([{ descricao, valor }]);
+                    if (error) throw error;
+                    registrarLog("GASTO", `Lançou gasto: ${descricao} - R$ ${valor.toFixed(2)}`);
+                    e.target.reset();
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                    alert("Erro ao lançar gasto.");
+                }
+            };
+
+            const deletarItemPedido = async (itemId) => {
+                try {
+                    await supabaseClient.from('pedidos').delete().eq('id', itemId);
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            // ---- SALVAR QUANTIDADE DE MESAS ----
             const salvarNovaQtdMesas = async (novaQtd) => {
                 setQtdMesas(novaQtd);
                 safeSetItem('jb_qtd_mesas', novaQtd);
@@ -251,10 +404,10 @@
                 }
             };
 
-            // ---- DEFINIÇÃO DE ABAS DISPONÍVEIS CONFORME NÍVEL DE ACESSO ----
+            // ---- DEFINIÇÃO DE ABAS DISPONÍVEIS CONFORME ACESSO ----
             const abasDisponiveis = useMemo(() => {
                 if (userLogado && userLogado.nivel === 'admin') {
-                    return ['home', 'notas', 'estoque', 'equipe', 'logs', 'financeiro'];
+                    return ['home', 'notas', 'estoque', 'equipe', 'logs', 'financeiro', 'gastos'];
                 }
                 return ['home']; // Atendentes visualizam somente a aba Mesas
             }, [userLogado]);
@@ -359,7 +512,7 @@
                 return logsFiltrados.slice(inicio, fim);
             }, [logsFiltrados, paginaLogValida]);
 
-            // ---- RELATÓRIO / HISTÓRICO FINANCEIRO AGRUPADO POR DIAS ----
+            // ---- RELATÓRIO / HISTÓRICO FINANCEIRO INTEGRADO COM GASTOS ----
             const historicoFinanceiro = useMemo(() => {
                 const dias = {};
                 
@@ -375,7 +528,8 @@
                             vendas: 0,
                             fiado: 0,
                             recebidoNotas: 0,
-                            totalDinheiro: 0
+                            totalDinheiro: 0,
+                            gastos: 0 
                         };
                     }
                     
@@ -394,113 +548,82 @@
                         dias[dataFormatada].recebidoNotas += valor;
                     }
                 });
+
+                // Soma os gastos registrados por dia
+                gastos.forEach(g => {
+                    if (!g.data) return;
+                    const dataFormatada = new Date(g.data).toLocaleDateString('pt-BR');
+                    if (!dias[dataFormatada]) {
+                        dias[dataFormatada] = {
+                            data: dataFormatada,
+                            dataObj: new Date(g.data),
+                            vendas: 0,
+                            fiado: 0,
+                            recebidoNotas: 0,
+                            totalDinheiro: 0,
+                            gastos: 0
+                        };
+                    }
+                    dias[dataFormatada].gastos += Number(g.valor || 0);
+                });
                 
                 return Object.values(dias)
                     .map(d => ({
                         ...d,
-                        totalDinheiro: d.vendas + d.recebidoNotas
+                        totalDinheiro: d.vendas + d.recebidoNotas,
+                        saldoLiquido: (d.vendas + d.recebidoNotas) - d.gastos 
                     }))
                     .sort((a, b) => b.dataObj - a.dataObj);
-            }, [logs]);
+            }, [logs, gastos]);
 
             const faturamentoHoje = useMemo(() => {
                 const hojeFormatado = new Date().toLocaleDateString('pt-BR');
                 const hojeDados = historicoFinanceiro.find(d => d.data === hojeFormatado);
-                return hojeDados || {
+                
+                // Soma despesas de hoje
+                const hojeString = new Date().toDateString();
+                const totalGastosHoje = gastos
+                    .filter(g => new Date(g.data).toDateString() === hojeString)
+                    .reduce((acc, g) => acc + Number(g.valor || 0), 0);
+
+                const dados = hojeDados || {
                     data: hojeFormatado,
                     vendas: 0,
                     fiado: 0,
                     recebidoNotas: 0,
                     totalDinheiro: 0
                 };
-            }, [historicoFinanceiro]);
 
+                return {
+                    ...dados,
+                    gastosHoje: totalGastosHoje,
+                    saldoHoje: (dados.vendas + dados.recebidoNotas) - totalGastosHoje
+                };
+            }, [historicoFinanceiro, gastos]);
 
-            // ---- AÇÕES DE PRODUTO NA MESA ----
-            const adicionarProdutoMesa = async (p) => {
-                if (p.estoque <= 0) return alert("Sem estoque!");
-                try {
-                    const mesaAtual = mesas[idMesaAberta - 1];
-                    const apelido = mesaAtual ? (mesaAtual.apelido || '') : '';
-                    await supabaseClient.from('pedidos').insert([{ 
-                        mesa: idMesaAberta, 
-                        produto_nome: p.nome, 
-                        preco_unidade: p.preco, 
-                        apelido_mesa: apelido 
-                    }]);
-                    await supabaseClient.from('produtos').update({ estoque: p.estoque - 1 }).eq('id', p.id);
-                    buscarDados();
-                } catch (err) {
-                    console.error(err);
-                }
-            };
-
-            const alterarApelido = async () => {
-                const mesaAtual = mesas[idMesaAberta - 1];
-                const apelidoAtual = mesaAtual ? (mesaAtual.apelido || '') : '';
-                const ap = prompt("Nome/Apelido:", apelidoAtual);
-                if (ap !== null) {
-                    await supabaseClient.from('pedidos').update({ apelido_mesa: ap }).eq('mesa', idMesaAberta);
-                    buscarDados();
-                }
-            };
-
-            const registrarFiado = async () => {
-                const mesaAtual = mesas[idMesaAberta - 1];
-                const apelidoAtual = mesaAtual ? (mesaAtual.apelido || '') : '';
-                const clie = prompt("Cliente Fiado:", apelidoAtual);
-                if (clie) {
-                    const totalMesa = mesaAtual ? mesaAtual.total : 0;
-                    await supabaseClient.from('notas_pendentes').insert([{ cliente: clie.toUpperCase(), valor: totalMesa }]);
-                    await registrarLog("FIADO", `${clie}: R$ ${totalMesa.toFixed(2)}`);
-                    await supabaseClient.from('pedidos').delete().eq('mesa', idMesaAberta);
-                    setIdMesaAberta(null);
-                    setBuscaProduto('');
-                    setCategoriaSelecionada('Todos');
-                }
-            };
-
-            const registrarPagamento = async () => {
-                if (confirm("Confirmar pagamento?")) {
-                    const mesaAtual = mesas[idMesaAberta - 1];
-                    const totalMesa = mesaAtual ? mesaAtual.total : 0;
-                    await registrarLog("VENDA", `Mesa ${idMesaAberta}: R$ ${totalMesa.toFixed(2)}`);
-                    await supabaseClient.from('pedidos').delete().eq('mesa', idMesaAberta);
-                    setIdMesaAberta(null);
-                    setBuscaProduto('');
-                    setCategoriaSelecionada('Todos');
-                }
-            };
-
-            // ---- AÇÕES DE ESTOQUE ----
-            const removerProduto = async (id, nome) => {
-                if(confirm(`Excluir permanentemente o produto: ${nome}?`)) {
-                    await supabaseClient.from('produtos').delete().eq('id', id);
-                    registrarLog("EXCLUSÃO", `Produto removido: ${nome}`);
-                }
-            };
-
-            // ---- AÇÕES DE EQUIPE ----
-            const removerUsuario = async (id, nome) => {
-                if(userLogado.usuario === nome) return alert("Você não pode excluir a si mesmo!");
-                if(confirm(`Remover o acesso de ${nome}?`)) {
-                    await supabaseClient.from('usuarios_gestao').delete().eq('id', id);
-                    registrarLog("EQUIPE", `Removeu usuário: ${nome}`);
-                }
-            };
+            // ---- LÓGICA DE GASTOS AGRUPADOS POR MÊS ----
+            const gastosMensais = useMemo(() => {
+                const meses = {};
+                gastos.forEach(g => {
+                    if (!g.data) return;
+                    const dataObj = new Date(g.data);
+                    const mesAno = dataObj.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+                    if (!meses[mesAno]) {
+                        meses[mesAno] = {
+                            mesAno,
+                            total: 0,
+                            itens: []
+                        };
+                    }
+                    meses[mesAno].total += Number(g.valor || 0);
+                    meses[mesAno].itens.push(g);
+                });
+                return Object.values(meses);
+            }, [gastos]);
 
             if (!userLogado) return (
                 <div className="h-screen flex items-center justify-center p-6 bg-slate-950">
-                    <form onSubmit={async (e) => {
-                        e.preventDefault();
-                        const { data } = await supabaseClient.from('usuarios_gestao').select('*').eq('usuario', e.target.u.value.toLowerCase()).eq('senha', e.target.s.value).single();
-                        if (data) { 
-                            setUserLogado(data); 
-                            safeSetItem('jb_user_data', JSON.stringify(data)); 
-                            buscarDados(); 
-                        }
-                        else alert("Credenciais incorretas");
-                    }} className="w-full max-w-sm bg-slate-900 p-8 rounded-[40px] border border-slate-800">
+                    <form onSubmit={realizarLogin} className="w-full max-w-sm bg-slate-900 p-8 rounded-[40px] border border-slate-800">
                         <h1 className="text-3xl font-black text-center mb-8 italic uppercase tracking-tighter">JB <span className="text-orange-500">Espeto</span></h1>
                         <input name="u" placeholder="USUÁRIO" className="w-full p-4 mb-4 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700 font-bold uppercase" required />
                         <input name="s" type="password" placeholder="SENHA" className="w-full p-4 mb-6 bg-slate-800 rounded-2xl text-white outline-none border border-slate-700 font-bold" required />
@@ -534,7 +657,7 @@
                                                         if (!confirm("A última mesa possui consumo ativo! Deseja realmente removê-la?")) return;
                                                     }
                                                     const novaQtd = qtdMesas - 1;
-                                                    salvarNovaQtdMesas(novaQtd); // Envia ao Supabase
+                                                    salvarNovaQtdMesas(novaQtd); 
                                                 }
                                             }}
                                             className="bg-red-600/10 border border-red-500/20 text-red-500 px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase"
@@ -544,7 +667,7 @@
                                         <button 
                                             onClick={() => {
                                                 const novaQtd = qtdMesas + 1;
-                                                salvarNovaQtdMesas(novaQtd); // Envia ao Supabase
+                                                salvarNovaQtdMesas(novaQtd); 
                                             }}
                                             className="bg-green-600/10 border border-green-500/20 text-green-500 px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase"
                                         >
@@ -567,27 +690,12 @@
 
                         {pagina === 'estoque' && userLogado.nivel === 'admin' && (
                             <div className="space-y-4">
-                                {/* Seção de Gerenciamento Estrito de Etiquetas (Categorias) */}
+                                {/* Seção de Gerenciamento de Categorias */}
                                 <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-4">
                                     <h3 className="text-xs font-black uppercase text-orange-500 italic">Etiquetas (Categorias)</h3>
                                     
                                     {/* Formulário de Nova Categoria */}
-                                    <form onSubmit={async (e) => {
-                                        e.preventDefault();
-                                        const nome = e.target.catNome.value.trim();
-                                        const emoji = e.target.catEmoji.value.trim() || '📦';
-                                        if (!nome) return;
-                                        try {
-                                            const { error } = await supabaseClient.from('categorias').insert([{ nome, emoji }]);
-                                            if (error) throw error;
-                                            registrarLog("ESTOQUE", `Nova categoria: ${nome} [${emoji}]`);
-                                            e.target.reset();
-                                            buscarDados();
-                                        } catch (err) {
-                                            console.error(err);
-                                            alert("Erro ao salvar categoria (talvez uma etiqueta com esse nome já exista).");
-                                        }
-                                    }} className="space-y-3">
+                                    <form onSubmit={adicionarNovaCategoria} className="space-y-3">
                                         <div className="grid grid-cols-4 gap-2">
                                             <input name="catEmoji" placeholder="EMOJI (ex: 🍻)" maxLength="2" className="bg-slate-800 p-3 rounded-xl outline-none text-sm text-center font-bold text-white border border-slate-700/50" />
                                             <input name="catNome" placeholder="NOME DA CATEGORIA" className="col-span-3 bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase text-white border border-slate-700/50" required />
@@ -595,7 +703,7 @@
                                         <button className="w-full bg-orange-600 hover:bg-orange-700 transition-colors p-3 rounded-xl font-black uppercase text-xs text-white">Criar Categoria</button>
                                     </form>
 
-                                    {/* Listagem das Etiquetas com Botão Real de Excluir */}
+                                    {/* Listagem das Etiquetas com Botão de Excluir */}
                                     <div className="pt-2 border-t border-slate-800/60">
                                         <div className="text-[10px] font-black text-slate-500 uppercase mb-2">Categorias Cadastradas:</div>
                                         <div className="flex flex-wrap gap-2">
@@ -619,25 +727,7 @@
                                 </div>
 
                                 {/* Formulário de Novo Produto */}
-                                <form onSubmit={async (e) => {
-                                    e.preventDefault();
-                                    const nome = e.target.nome.value;
-                                    const preco_compra = parseFloat(e.target.preco_compra.value) || 0;
-                                    const preco = parseFloat(e.target.preco.value) || 0;
-                                    const estoque = parseInt(e.target.estoque.value) || 0;
-                                    const categoria = e.target.categoria.value;
-
-                                    await supabaseClient.from('produtos').insert([{ 
-                                        nome, 
-                                        preco_compra, 
-                                        preco, 
-                                        estoque, 
-                                        categoria 
-                                    }]);
-                                    
-                                    registrarLog("ESTOQUE", `Novo item: ${nome} [${categoria}] - Compra: R$ ${preco_compra.toFixed(2)} / Venda: R$ ${preco.toFixed(2)}`);
-                                    e.target.reset();
-                                }} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3 shadow-inner">
+                                <form onSubmit={adicionarNovoProduto} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3 shadow-inner">
                                     <h3 className="text-xs font-black uppercase text-orange-500 italic">Novo Produto</h3>
                                     <input name="nome" placeholder="NOME DO PRODUTO" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase text-white" required />
                                     
@@ -694,15 +784,7 @@
 
                         {pagina === 'equipe' && userLogado.nivel === 'admin' && (
                             <div className="space-y-4">
-                                <form onSubmit={async (e) => {
-                                    e.preventDefault();
-                                    const usuario = e.target.usuario.value.toLowerCase();
-                                    const senha = e.target.senha.value;
-                                    const nivel = e.target.nivel.value;
-                                    await supabaseClient.from('usuarios_gestao').insert([{ usuario, senha, nivel }]);
-                                    registrarLog("EQUIPE", `Novo membro: ${usuario}`);
-                                    e.target.reset();
-                                }} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
+                                <form onSubmit={adicionarNovoUsuario} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
                                     <h3 className="text-xs font-black uppercase text-orange-500 italic">Adicionar Usuário</h3>
                                     <input name="usuario" placeholder="USUÁRIO" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase" required />
                                     <input name="senha" type="password" placeholder="SENHA" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold" required />
@@ -811,29 +893,41 @@
                             <div className="space-y-4">
                                 <h2 className="text-xl font-black text-orange-500 italic uppercase">Financeiro & Relatórios</h2>
                                 
-                                {/* Caixa de Hoje em Destaque */}
+                                {/* Caixa de Hoje em Destaque Integrado com os Gastos */}
                                 <div className="bg-slate-900 p-5 rounded-3xl border-2 border-emerald-500/30 space-y-4 shadow-xl">
                                     <div className="flex justify-between items-center">
                                         <div className="text-xs font-black uppercase text-emerald-400 tracking-wider">FATURAMENTO DE HOJE ({faturamentoHoje.data})</div>
                                         <span className="text-2xl font-black text-emerald-400">R$ {faturamentoHoje.totalDinheiro.toFixed(2)}</span>
                                     </div>
-                                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-800 text-[9px] font-bold text-slate-500 uppercase">
+                                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-800 text-[9px] font-bold text-slate-500 uppercase">
+                                        <div>
+                                            <div>Gastos de Hoje</div>
+                                            <div className="text-rose-400 mt-1 text-xs">R$ {faturamentoHoje.gastosHoje.toFixed(2)}</div>
+                                        </div>
+                                        <div>
+                                            <div>Saldo Líquido de Hoje</div>
+                                            <div className={`${faturamentoHoje.saldoHoje >= 0 ? 'text-emerald-400 font-black' : 'text-rose-500 font-black'} mt-1 text-xs`}>
+                                                R$ {faturamentoHoje.saldoHoje.toFixed(2)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-800 text-[8px] font-bold text-slate-500 uppercase">
                                         <div>
                                             <div>Vendas Dir.</div>
-                                            <div className="text-white mt-1 text-xs">R$ {faturamentoHoje.vendas.toFixed(2)}</div>
+                                            <div className="text-white mt-1 text-[10px]">R$ {faturamentoHoje.vendas.toFixed(2)}</div>
                                         </div>
                                         <div>
                                             <div>Recebido Notas</div>
-                                            <div className="text-white mt-1 text-xs">R$ {faturamentoHoje.recebidoNotas.toFixed(2)}</div>
+                                            <div className="text-white mt-1 text-[10px]">R$ {faturamentoHoje.recebidoNotas.toFixed(2)}</div>
                                         </div>
                                         <div>
                                             <div>Fiado Gerado</div>
-                                            <div className="text-yellow-500 mt-1 text-xs font-black">R$ {faturamentoHoje.fiado.toFixed(2)}</div>
+                                            <div className="text-yellow-500 mt-1 text-[10px] font-black">R$ {faturamentoHoje.fiado.toFixed(2)}</div>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Listagem do Histórico dos Outros Dias */}
+                                {/* Listagem do Histórico dos Outros Dias integrado com Gastos */}
                                 <div className="space-y-2">
                                     <h3 className="text-xs font-black uppercase text-slate-400 italic tracking-wider mt-4">Histórico de Dias Anteriores</h3>
                                     {historicoFinanceiro
@@ -842,19 +936,28 @@
                                             <div key={d.data} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col gap-2 shadow-sm">
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-xs font-black text-slate-400 uppercase tracking-wider">{d.data}</span>
-                                                    <span className="text-sm font-black text-emerald-500">R$ {d.totalDinheiro.toFixed(2)}</span>
+                                                    <div className="text-right">
+                                                        <div className="text-sm font-black text-emerald-500">Caixa: R$ {d.totalDinheiro.toFixed(2)}</div>
+                                                        <div className={`text-[10px] font-black ${d.saldoLiquido >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                                                            Líq: R$ {d.saldoLiquido.toFixed(2)}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/60 text-[8px] font-bold text-slate-500 uppercase">
+                                                <div className="grid grid-cols-4 gap-1 pt-2 border-t border-slate-800/60 text-[8px] font-bold text-slate-500 uppercase">
                                                     <div>
-                                                        <div>Vendas Dir.</div>
+                                                        <div>Vendas</div>
                                                         <div className="text-slate-300 mt-0.5">R$ {d.vendas.toFixed(2)}</div>
                                                     </div>
                                                     <div>
-                                                        <div>Recebido Notas</div>
+                                                        <div>Rec. Notas</div>
                                                         <div className="text-slate-300 mt-0.5">R$ {d.recebidoNotas.toFixed(2)}</div>
                                                     </div>
                                                     <div>
-                                                        <div>Fiado Gerado</div>
+                                                        <div>Gastos</div>
+                                                        <div className="text-rose-400 mt-0.5 font-bold">R$ {d.gastos.toFixed(2)}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div>Fiado</div>
                                                         <div className="text-yellow-500/80 mt-0.5">R$ {d.fiado.toFixed(2)}</div>
                                                     </div>
                                                 </div>
@@ -863,6 +966,57 @@
                                     }
                                     {historicoFinanceiro.length <= 1 && (
                                         <div className="text-center text-slate-500 text-xs py-8 uppercase font-bold">Nenhum histórico financeiro anterior encontrado</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {pagina === 'gastos' && userLogado.nivel === 'admin' && (
+                            <div className="space-y-4">
+                                <h2 className="text-xl font-black text-orange-500 italic uppercase">Controle de Gastos</h2>
+
+                                {/* Formulário de Lançamento de Gasto */}
+                                <form onSubmit={adicionarNovoGasto} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3 shadow-inner">
+                                    <h3 className="text-xs font-black uppercase text-orange-500 italic">Lançar Novo Gasto / Insumo</h3>
+                                    <input name="descricao" placeholder="DESCRIÇÃO (ex: CARVÃO, GELO, ALUGUEL...)" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase text-white border border-slate-700/50" required />
+                                    <input name="valor" type="number" step="0.01" placeholder="VALOR (R$)" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white border border-slate-700/50" required />
+                                    <button className="w-full bg-orange-600 p-3 rounded-xl font-black uppercase text-xs text-white">Lançar Gasto</button>
+                                </form>
+
+                                {/* Listagem e Soma por Mês */}
+                                <div className="space-y-4">
+                                    {gastosMensais.map(m => (
+                                        <div key={m.mesAno} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
+                                            <div className="flex justify-between items-center border-b border-slate-800/60 pb-2">
+                                                <span className="text-xs font-black uppercase text-orange-500 italic">{m.mesAno}</span>
+                                                <span className="text-sm font-black text-rose-500">Total: R$ {m.total.toFixed(2)}</span>
+                                            </div>
+                                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                                {m.itens.map(g => (
+                                                    <div key={g.id} className="bg-slate-850 p-3 rounded-xl flex justify-between items-center border border-slate-800 hover:border-slate-700 transition-colors">
+                                                        <div>
+                                                            <div className="text-xs font-black uppercase text-white">{g.descricao}</div>
+                                                            <div className="text-[9px] text-slate-500 font-bold uppercase mt-0.5">
+                                                                {new Date(g.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-xs font-black text-rose-400">R$ {Number(g.valor).toFixed(2)}</span>
+                                                            <button type="button" onClick={async () => {
+                                                                if (confirm(`Deseja mesmo excluir o gasto "${g.descricao}"?`)) {
+                                                                    await supabaseClient.from('gastos').delete().eq('id', g.id);
+                                                                    registrarLog("GASTO", `Removeu gasto: ${g.descricao}`);
+                                                                    buscarDados();
+                                                                }
+                                                            }} className="text-red-500 font-bold hover:text-red-400 transition-colors">✕</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {gastos.length === 0 && (
+                                        <div className="text-center text-slate-500 text-xs py-8 uppercase font-black tracking-wider">Nenhum gasto registrado.</div>
                                     )}
                                 </div>
                             </div>
@@ -917,7 +1071,7 @@
                     <nav className="fixed bottom-0 w-full bg-slate-900/95 backdrop-blur-md p-4 border-t border-slate-800 flex gap-2 z-40 overflow-x-auto no-scrollbar">
                         {abasDisponiveis.map(p => (
                             <button key={p} onClick={() => setPagina(p)} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase transition-all ${pagina === p ? 'active-tab shadow-lg shadow-orange-600/30' : 'bg-slate-800 text-slate-500'}`}>
-                                {p === 'home' ? 'Mesas' : p === 'financeiro' ? 'Financeiro' : p}
+                                {p === 'home' ? 'Mesas' : p === 'financeiro' ? 'Financeiro' : p === 'gastos' ? 'Gastos' : p}
                             </button>
                         ))}
                     </nav>
@@ -925,26 +1079,7 @@
                     {/* Modal Moderno para Edição de Produtos */}
                     {produtoEditando && (
                         <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[70] flex items-center justify-center p-6">
-                            <form onSubmit={async (e) => {
-                                e.preventDefault();
-                                const nome = e.target.editNome.value;
-                                const preco_compra = parseFloat(e.target.editPrecoCompra.value) || 0;
-                                const preco = parseFloat(e.target.editPreco.value) || 0;
-                                const estoque = parseInt(e.target.editEstoque.value) || 0;
-                                const categoria = e.target.editCategoria.value;
-                                
-                                await supabaseClient.from('produtos').update({ 
-                                    nome, 
-                                    preco_compra, 
-                                    preco, 
-                                    estoque, 
-                                    categoria 
-                                }).eq('id', produtoEditando.id);
-                                
-                                registrarLog("EDIÇÃO", `Alterou ${produtoEditando.nome} -> Compra: R$ ${preco_compra.toFixed(2)} / Venda: R$ ${preco.toFixed(2)} / Est: ${estoque} / Cat: ${categoria}`);
-                                setProdutoEditando(null);
-                                buscarDados();
-                            }} className="bg-slate-900 w-full max-w-sm rounded-[30px] p-6 border border-slate-800 space-y-4">
+                            <form onSubmit={atualizarProduto} className="bg-slate-900 w-full max-w-sm rounded-[30px] p-6 border border-slate-800 space-y-4">
                                 <div className="flex justify-between items-center">
                                     <h3 className="text-sm font-black uppercase text-orange-500 italic">Editar Produto</h3>
                                     <button type="button" onClick={() => setProdutoEditando(null)} className="text-slate-500 hover:text-white font-bold text-xs uppercase">Cancelar</button>
@@ -1007,7 +1142,7 @@
                                                 <span>{it.produto_nome}</span>
                                                 <div className="flex gap-4">
                                                     <span>R$ {Number(it.preco_unidade || 0).toFixed(2)}</span>
-                                                    <button onClick={async () => { await supabaseClient.from('pedidos').delete().eq('id', it.id); buscarDados(); }} className="text-red-500 font-bold">X</button>
+                                                    <button onClick={() => deletarItemPedido(it.id)} className="text-red-500 font-bold">X</button>
                                                 </div>
                                             </div>
                                         ))}
@@ -1097,7 +1232,7 @@
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render((<App />));
+        root.render(<App />);
     </script>
 </body>
 </html>
