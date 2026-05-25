@@ -21,7 +21,6 @@
 
     <script type="text/babel">
         const { useState, useEffect, useCallback, useMemo } = React;
-
         const SUPABASE_URL = 'https://zpzjpkrglknnhoojglmv.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpwempwa3JnbGtubmhvb2pnbG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NzY4NTUsImV4cCI6MjA5MzA1Mjg1NX0.6BV3CTuBjOXraXnswNBpZoapHF_NDV7P4O1ja_cVNEY'; 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -98,7 +97,6 @@
                 const length = (num && num > 0) ? num : 12;
                 return Array.from({ length }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' }));
             });
-
             const [produtos, setProdutos] = useState([]);
             
             // Inicializa as categorias padrão diretamente no estado para evitar falhas locais offline
@@ -109,8 +107,7 @@
                 { nome: 'Doses', emoji: '🥃' },
                 { nome: 'Cozinha', emoji: '🍳' },
                 { nome: 'Outros', emoji: '📦' }
-            ]); 
-            
+            ]);
             const [notas, setNotas] = useState([]);
             const [logs, setLogs] = useState([]);
             const [gastos, setGastos] = useState([]); 
@@ -118,7 +115,7 @@
             const [idMesaAberta, setIdMesaAberta] = useState(null);
             const [buscaProduto, setBuscaProduto] = useState('');
             const [categoriaSelecionada, setCategoriaSelecionada] = useState('Todos'); 
-            const [produtoEditando, setProdutoEditando] = useState(null); 
+            const [produtoEditando, setProdutoEditando] = useState(null);
 
             // Estados adicionais para filtro e paginação de Logs
             const [filtroUsuarioLog, setFiltroUsuarioLog] = useState('');
@@ -210,7 +207,7 @@
                         setEquipe(resEquipe.data);
                     }
                 } catch (e) { 
-                    console.error("Erro na busca local de dados:", e); 
+                    console.error("Erro na busca local de dados:", e);
                 }
             }, [qtdMesas]);
 
@@ -224,7 +221,7 @@
                     { nome: 'Cerveja', emoji: '🍺' },
                     { nome: 'Bar', emoji: '🍹' },
                     { nome: 'Espeto', emoji: '🍢' },
-                    { nome: 'Doses', emoji: 'Doses', emoji: '🥃' },
+                    { nome: 'Doses', emoji: '🥃' },
                     { nome: 'Cozinha', emoji: '🍳' },
                     { nome: 'Outros', emoji: '📦' }
                 ];
@@ -268,14 +265,14 @@
                 buscarDados();
             };
 
-            // ---- FUNÇÕES ASSÍNCRONAS EXTERNALIZADAS DO JSX (EVITA CRASH NO COMPILADOR) ----
+            // ---- FUNÇÕES ASSÍNCRONAS EXTERNALIZADAS DO JSX ----
             
             const realizarLogin = async (e) => {
                 e.preventDefault();
                 try {
                     const { data } = await supabaseClient.from('usuarios_gestao').select('*').eq('usuario', e.target.u.value.toLowerCase()).eq('senha', e.target.s.value).single();
                     if (data) { 
-                        setUserLogado(data); 
+                        setUserLogado(data);
                         safeSetItem('jb_user_data', JSON.stringify(data)); 
                         buscarDados(); 
                     }
@@ -308,18 +305,18 @@
                 const preco_compra = parseFloat(e.target.preco_compra.value) || 0;
                 const preco = parseFloat(e.target.preco.value) || 0;
                 const estoque = parseInt(e.target.estoque.value) || 0;
-                const categoria = e.target.categoria.value;
-
+                const category = e.target.categoria.value;
                 try {
                     await supabaseClient.from('produtos').insert([{ 
                         nome, 
                         preco_compra, 
                         preco, 
                         estoque, 
-                        categoria 
+                        categoria: category 
                     }]);
-                    registrarLog("ESTOQUE", `Novo item: ${nome} [${categoria}] - Compra: R$ ${preco_compra.toFixed(2)} / Venda: R$ ${preco.toFixed(2)}`);
+                    registrarLog("ESTOQUE", `Novo item: ${nome} [${category}] - Compra: R$ ${preco_compra.toFixed(2)} / Venda: R$ ${preco.toFixed(2)}`);
                     e.target.reset();
+                    buscarDados();
                 } catch (err) {
                     console.error(err);
                 }
@@ -331,19 +328,28 @@
                 const preco_compra = parseFloat(e.target.editPrecoCompra.value) || 0;
                 const preco = parseFloat(e.target.editPreco.value) || 0;
                 const estoque = parseInt(e.target.editEstoque.value) || 0;
-                const categoria = e.target.editCategoria.value;
-                
+                const category = e.target.editCategoria.value;
                 try {
                     await supabaseClient.from('produtos').update({ 
                         nome, 
                         preco_compra, 
                         preco, 
                         estoque, 
-                        categoria 
+                        categoria: category 
                     }).eq('id', produtoEditando.id);
-                    
-                    registrarLog("EDIÇÃO", `Alterou ${produtoEditando.nome} -> Compra: R$ ${preco_compra.toFixed(2)} / Venda: R$ ${preco.toFixed(2)} / Est: ${estoque} / Cat: ${categoria}`);
+                    registrarLog("EDIÇÃO", `Alterou ${produtoEditando.nome} -> Compra: R$ ${preco_compra.toFixed(2)} / Venda: R$ ${preco.toFixed(2)} / Est: ${estoque} / Cat: ${category}`);
                     setProdutoEditando(null);
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            const removerProduto = async (id, nome) => {
+                if (!confirm(`Deseja realmente deletar o produto "${nome}"?`)) return;
+                try {
+                    await supabaseClient.from('produtos').delete().eq('id', id);
+                    registrarLog("EXCLUSÃO", `Deletou o produto: ${nome}`);
                     buscarDados();
                 } catch (err) {
                     console.error(err);
@@ -359,6 +365,7 @@
                     await supabaseClient.from('usuarios_gestao').insert([{ usuario, senha, nivel }]);
                     registrarLog("EQUIPE", `Novo membro: ${usuario}`);
                     e.target.reset();
+                    buscarDados();
                 } catch (err) {
                     console.error(err);
                 }
@@ -369,7 +376,6 @@
                 const descricao = e.target.descricao.value.trim();
                 const valor = parseFloat(e.target.valor.value) || 0;
                 if (!descricao || valor <= 0) return;
-
                 try {
                     const { error } = await supabaseClient.from('gastos').insert([{ descricao, valor }]);
                     if (error) throw error;
@@ -391,7 +397,6 @@
                 }
             };
 
-            // ---- SALVAR QUANTIDADE DE MESAS ----
             const salvarNovaQtdMesas = async (novaQtd) => {
                 setQtdMesas(novaQtd);
                 safeSetItem('jb_qtd_mesas', novaQtd);
@@ -404,19 +409,16 @@
                 }
             };
 
-            // ---- DEFINIÇÃO DE ABAS DISPONÍVEIS CONFORME ACESSO ----
             const abasDisponiveis = useMemo(() => {
                 if (userLogado && userLogado.nivel === 'admin') {
                     return ['home', 'notas', 'estoque', 'equipe', 'logs', 'financeiro', 'gastos'];
                 }
-                return ['home']; // Atendentes visualizam somente a aba Mesas
+                return ['home'];
             }, [userLogado]);
 
-            // ---- LÓGICA E DADOS DE NOTAS AGRUPADAS ----
             const totalParaReceber = useMemo(() => {
                 return notas.reduce((acc, n) => acc + Number(n.valor || 0), 0);
             }, [notas]);
-
             const totalNotasAbertas = notas.length;
 
             const notasAgrupadas = useMemo(() => {
@@ -435,7 +437,6 @@
                 });
                 return Object.values(grupos).sort((a, b) => b.total - a.total);
             }, [notas]);
-
             const totalClientesPendentes = notasAgrupadas.length;
 
             const receberPagamentoCliente = async (grupo) => {
@@ -444,8 +445,7 @@
                     `Cliente: ${cliente}\nTotal Devido: R$ ${total.toFixed(2)}\n\nDigite o valor que o cliente está pagando:`, 
                     total.toFixed(2)
                 );
-                
-                if (inputVal === null) return; // Cancelou
+                if (inputVal === null) return;
 
                 const valorPago = parseFloat(inputVal);
                 if (isNaN(valorPago) || valorPago <= 0) {
@@ -457,11 +457,10 @@
 
                 try {
                     let restanteParaAbater = valorPago;
-                    const notasOrdenadas = [...notasOriginais].sort((a, b) => a.id - b.id);
+                    const notasOrdenadas = [...notesOriginais].sort((a, b) => a.id - b.id);
 
                     for (let n of notasOrdenadas) {
                         if (restanteParaAbater <= 0) break;
-
                         const valorNota = Number(n.valor || 0);
                         if (restanteParaAbater >= valorNota) {
                             await supabaseClient.from('notas_pendentes').update({ pago: true }).eq('id', n.id);
@@ -490,7 +489,6 @@
                 }
             };
 
-            // ---- LÓGICA DE FILTRAGEM E PAGINAÇÃO DE LOGS ----
             const logsFiltrados = useMemo(() => {
                 if (!filtroUsuarioLog.trim()) return logs;
                 return logs.filter(l => 
@@ -501,18 +499,15 @@
             const totalPaginasLog = useMemo(() => {
                 return Math.ceil(logsFiltrados.length / logsPorPagina) || 1;
             }, [logsFiltrados]);
-
             const paginaLogValida = useMemo(() => {
                 return Math.min(paginaLog, totalPaginasLog);
             }, [paginaLog, totalPaginasLog]);
-
             const logsPaginados = useMemo(() => {
                 const inicio = (paginaLogValida - 1) * logsPorPagina;
                 const fim = inicio + logsPorPagina;
                 return logsFiltrados.slice(inicio, fim);
             }, [logsFiltrados, paginaLogValida]);
 
-            // ---- RELATÓRIO / HISTÓRICO FINANCEIRO INTEGRADO COM GASTOS ----
             const historicoFinanceiro = useMemo(() => {
                 const dias = {};
                 
@@ -539,7 +534,7 @@
                     const regexR = /R\$\s*([0-9.,]+)/i;
                     const match = detalhes.match(regexR);
                     const valor = match ? parseFloat(match[1].replace(',', '.')) : 0;
-                    
+
                     if (acao === 'VENDA') {
                         dias[dataFormatada].vendas += valor;
                     } else if (acao === 'FIADO') {
@@ -549,7 +544,6 @@
                     }
                 });
 
-                // Soma os gastos registrados por dia
                 gastos.forEach(g => {
                     if (!g.data) return;
                     const dataFormatada = new Date(g.data).toLocaleDateString('pt-BR');
@@ -580,7 +574,6 @@
                 const hojeFormatado = new Date().toLocaleDateString('pt-BR');
                 const hojeDados = historicoFinanceiro.find(d => d.data === hojeFormatado);
                 
-                // Soma despesas de hoje
                 const hojeString = new Date().toDateString();
                 const totalGastosHoje = gastos
                     .filter(g => new Date(g.data).toDateString() === hojeString)
@@ -601,7 +594,6 @@
                 };
             }, [historicoFinanceiro, gastos]);
 
-            // ---- LÓGICA DE GASTOS AGRUPADOS POR MÊS ----
             const gastosMensais = useMemo(() => {
                 const meses = {};
                 gastos.forEach(g => {
@@ -620,6 +612,80 @@
                 });
                 return Object.values(meses);
             }, [gastos]);
+
+            // Funções de atendimento interno da mesa aberta
+            const mesaAtual = mesas.find(m => m.id === idMesaAberta);
+
+            const lancarItemMesa = async (prod) => {
+                if (!idMesaAberta) return;
+                try {
+                    const apelidoAtual = mesaAtual ? mesaAtual.apelido : '';
+                    await supabaseClient.from('pedidos').insert([{
+                        mesa: idMesaAberta,
+                        produto_id: prod.id,
+                        nome_produto: prod.nome,
+                        preco_unidade: prod.preco,
+                        apelido_mesa: apelidoAtual
+                    }]);
+                    
+                    // Abate 1 unidade do estoque no Supabase
+                    const novoEstoque = Math.max(0, (prod.estoque || 0) - 1);
+                    await supabaseClient.from('produtos').update({ estoque: novoEstoque }).eq('id', prod.id);
+                    
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            const alterarApelido = async () => {
+                if (!idMesaAberta) return;
+                const antigo = mesaAtual ? mesaAtual.apelido : '';
+                const novo = prompt("Digite o nome ou identificação para esta mesa:", antigo);
+                if (novo === null) return;
+                try {
+                    await supabaseClient.from('pedidos').update({ apelido_mesa: novo.trim() }).eq('mesa', idMesaAberta);
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            const registrarFiado = async () => {
+                if (!mesaAtual || mesaAtual.total <= 0) return;
+                const cliente = prompt("Digite o nome do Cliente para registrar o Fiado:");
+                if (!cliente || !cliente.trim()) return;
+                try {
+                    await supabaseClient.from('notas_pendentes').insert([{
+                        cliente: cliente.trim(),
+                        valor: mesaAtual.total,
+                        pago: false
+                    }]);
+                    await registrarLog("FIADO", `${cliente.trim().toUpperCase()}: Cadastrou nota pendente de R$ ${mesaAtual.total.toFixed(2)} da Mesa ${idMesaAberta}`);
+                    await supabaseClient.from('pedidos').delete().eq('mesa', idMesaAberta);
+                    setIdMesaAberta(null);
+                    setBuscaProduto('');
+                    setCategoriaSelecionada('Todos');
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+
+            const registrarPagamento = async () => {
+                if (!mesaAtual || mesaAtual.total <= 0) return;
+                if (!confirm(`Confirmar pagamento total de R$ ${mesaAtual.total.toFixed(2)} da Mesa ${idMesaAberta}?`)) return;
+                try {
+                    await registrarLog("VENDA", `Mesa ${idMesaAberta}: Recebeu R$ ${mesaAtual.total.toFixed(2)} em dinheiro/cartão`);
+                    await supabaseClient.from('pedidos').delete().eq('mesa', idMesaAberta);
+                    setIdMesaAberta(null);
+                    setBuscaProduto('');
+                    setCategoriaSelecionada('Todos');
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                }
+            };
 
             if (!userLogado) return (
                 <div className="h-screen flex items-center justify-center p-6 bg-slate-950">
@@ -645,7 +711,6 @@
                     <main className="p-4">
                         {pagina === 'home' && (
                             <div className="space-y-4">
-                                {/* Painel de Adicionar/Remover Mesas Sincronizado */}
                                 <div className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800">
                                     <div className="text-xs font-black uppercase text-slate-400">Total: {qtdMesas} Mesas</div>
                                     <div className="flex gap-2">
@@ -690,11 +755,8 @@
 
                         {pagina === 'estoque' && userLogado.nivel === 'admin' && (
                             <div className="space-y-4">
-                                {/* Seção de Gerenciamento de Categorias */}
                                 <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-4">
                                     <h3 className="text-xs font-black uppercase text-orange-500 italic">Etiquetas (Categorias)</h3>
-                                    
-                                    {/* Formulário de Nova Categoria */}
                                     <form onSubmit={adicionarNovaCategoria} className="space-y-3">
                                         <div className="grid grid-cols-4 gap-2">
                                             <input name="catEmoji" placeholder="EMOJI (ex: 🍻)" maxLength="2" className="bg-slate-800 p-3 rounded-xl outline-none text-sm text-center font-bold text-white border border-slate-700/50" />
@@ -703,60 +765,56 @@
                                         <button className="w-full bg-orange-600 hover:bg-orange-700 transition-colors p-3 rounded-xl font-black uppercase text-xs text-white">Criar Categoria</button>
                                     </form>
 
-                                    {/* Listagem das Etiquetas com Botão de Excluir */}
                                     <div className="pt-2 border-t border-slate-800/60">
                                         <div className="text-[10px] font-black text-slate-500 uppercase mb-2">Categorias Cadastradas:</div>
                                         <div className="flex flex-wrap gap-2">
                                             {categoriasDb && categoriasDb.map(c => (
                                                 <div key={c.id} className="bg-slate-800 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-2 border border-slate-700 select-none">
                                                     <span>{c.emoji} {c.nome}</span>
-                                                    <button type="button" onClick={async () => {
-                                                        if (confirm(`Deseja realmente excluir a etiqueta "${c.nome}"?`)) {
-                                                            await supabaseClient.from('categorias').delete().eq('id', c.id);
-                                                            registrarLog("ESTOQUE", `Categoria removida: ${c.nome}`);
-                                                            buscarDados();
-                                                        }
-                                                    }} className="text-red-500 font-bold hover:text-red-400 transition-colors">✕</button>
+                                                    <button type="button" onClick={async () => { if (confirm(`Deseja realmente excluir a etiqueta "${c.nome}"?`)) { await supabaseClient.from('categorias').delete().eq('id', c.id); registrarLog("ESTOQUE", `Categoria removida: ${c.nome}`); buscarDados(); } }} className="text-red-500 font-bold ml-1 hover:text-red-400">✕</button>
                                                 </div>
                                             ))}
-                                            {(!categoriasDb || categoriasDb.length === 0) && (
-                                                <div className="text-[10px] text-slate-500 uppercase font-black tracking-wider">Nenhuma etiqueta personalizada registrada.</div>
-                                            )}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Formulário de Novo Produto */}
-                                <form onSubmit={adicionarNovoProduto} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3 shadow-inner">
-                                    <h3 className="text-xs font-black uppercase text-orange-500 italic">Novo Produto</h3>
-                                    <input name="nome" placeholder="NOME DO PRODUTO" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase text-white" required />
+                                <form onSubmit={adicionarNovoProduto} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
+                                    <h3 className="text-xs font-black uppercase text-orange-500 italic">Adicionar Produto</h3>
+                                    <input name="nome" placeholder="NOME DO PRODUTO" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase text-white border border-slate-700/50" required />
                                     
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input name="preco_compra" type="number" step="0.01" placeholder="PREÇO COMPRA" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white" required />
-                                        <input name="preco" type="number" step="0.01" placeholder="PREÇO VENDA" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white" required />
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div>
+                                            <label className="text-[9px] block mb-1 font-black text-slate-500 uppercase">Custo (R$)</label>
+                                            <input name="preco_compra" type="number" step="0.01" placeholder="0,00" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white border border-slate-700/50" required />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] block mb-1 font-black text-slate-500 uppercase">Venda (R$)</label>
+                                            <input name="preco" type="number" step="0.01" placeholder="0,00" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white border border-slate-700/50" required />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] block mb-1 font-black text-slate-500 uppercase">Qtd Estoque</label>
+                                            <input name="estoque" type="number" placeholder="0" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white border border-slate-700/50" required />
+                                        </div>
                                     </div>
-                                    
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input name="estoque" type="number" placeholder="ESTOQUE INICIAL" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white" required />
-                                        <select name="categoria" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-slate-300 uppercase">
-                                            {categoriasAtendimento
-                                                .filter(cat => cat.id !== 'Todos')
-                                                .map(cat => (
-                                                    <option key={cat.id} value={cat.nome}>{cat.nome}</option>
-                                                ))
-                                            }
+
+                                    <div>
+                                        <label className="text-[9px] block mb-1 font-black text-slate-500 uppercase">Categoria / Etiqueta</label>
+                                        <select name="categoria" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white uppercase border border-slate-700/50">
+                                            {categoriasAtendimento.filter(cat => cat.id !== 'Todos').map(cat => (
+                                                <option key={cat.id} value={cat.nome}>{cat.nome}</option>
+                                            ))}
                                         </select>
                                     </div>
-                                    <button className="w-full bg-orange-600 p-3 rounded-xl font-black uppercase text-xs">Adicionar Produto</button>
+
+                                    <button className="w-full bg-orange-600 p-3.5 rounded-xl font-black uppercase text-xs text-white">Salvar Produto</button>
                                 </form>
 
-                                {/* Listagem do Estoque */}
                                 <div className="space-y-2">
+                                    <div className="text-xs font-black text-slate-400 uppercase tracking-tight pl-1">Itens em Estoque ({produtos.length})</div>
                                     {produtos.map(p => {
                                         const comp = Number(p.preco_compra || 0);
                                         const vend = Number(p.preco || 0);
                                         const lucro = vend - comp;
-                                        
                                         return (
                                             <div key={p.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex justify-between items-center gap-2">
                                                 <div className="flex-1 min-w-0">
@@ -786,23 +844,26 @@
                             <div className="space-y-4">
                                 <form onSubmit={adicionarNovoUsuario} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
                                     <h3 className="text-xs font-black uppercase text-orange-500 italic">Adicionar Usuário</h3>
-                                    <input name="usuario" placeholder="USUÁRIO" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase" required />
-                                    <input name="senha" type="password" placeholder="SENHA" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold" required />
-                                    <select name="nivel" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase">
+                                    <input name="usuario" placeholder="USUÁRIO" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase border border-slate-700/50 text-white" required />
+                                    <input name="senha" type="password" placeholder="SENHA" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold border border-slate-700/50 text-white" required />
+                                    <select name="nivel" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase border border-slate-700/50 text-white">
                                         <option value="atendente">Atendente</option>
                                         <option value="admin">Administrador</option>
                                     </select>
-                                    <button className="w-full bg-orange-600 p-3 rounded-xl font-black uppercase text-xs">Criar Acesso</button>
+                                    <button className="w-full bg-orange-600 p-3.5 rounded-xl font-black uppercase text-xs text-white">Cadastrar Membro</button>
                                 </form>
 
                                 <div className="space-y-2">
-                                    {equipe.map(m => (
-                                        <div key={m.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
+                                    <div className="text-xs font-black text-slate-400 uppercase tracking-tight pl-1">Equipe Registrada</div>
+                                    {equipe.map(u => (
+                                        <div key={u.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
                                             <div>
-                                                <div className="font-black uppercase text-xs">{m.usuario}</div>
-                                                <div className="text-orange-500 text-[9px] font-black uppercase italic">{m.nivel}</div>
+                                                <div className="font-black uppercase text-xs text-white">{u.usuario}</div>
+                                                <div className="text-[9px] font-bold text-slate-500 uppercase mt-0.5">{u.nivel === 'admin' ? '⚡ Administrador' : '👤 Atendente'}</div>
                                             </div>
-                                            <button onClick={() => removerUsuario(m.id, m.usuario)} className="bg-red-600/10 text-red-500 p-2 rounded-lg font-bold border border-red-500/20">🗑️</button>
+                                            {u.usuario !== userLogado.usuario && (
+                                                <button onClick={async () => { if(confirm(`Deseja remover ${u.usuario}?`)){ await supabaseClient.from('usuarios_gestao').delete().eq('id', u.id); registrarLog("EQUIPE", `Removeu o usuário: ${u.usuario}`); buscarDados(); } }} className="bg-slate-800 text-red-500 p-2 rounded-xl text-xs font-bold">Deletar</button>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -811,74 +872,53 @@
 
                         {pagina === 'logs' && userLogado.nivel === 'admin' && (
                             <div className="space-y-4">
-                                <h2 className="text-xl font-black text-orange-500 italic uppercase">Histórico do Sistema</h2>
-                                
-                                {/* Campo de Busca de Operador */}
-                                <div className="flex gap-2">
+                                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800">
                                     <input 
                                         type="text" 
-                                        placeholder="🔍 BUSCAR POR OPERADOR..." 
+                                        placeholder="🔍 FILTRAR POR OPERADOR..." 
                                         value={filtroUsuarioLog}
-                                        onChange={(e) => {
-                                            setFiltroUsuarioLog(e.target.value);
-                                            setPaginaLog(1);
-                                        }}
-                                        className="w-full bg-slate-900 p-3.5 rounded-2xl outline-none text-xs font-bold uppercase border border-slate-800 text-white placeholder-slate-500 focus:border-orange-500 transition-colors"
+                                        onChange={(e) => { setFiltroUsuarioLog(e.target.value); setPaginaLog(1); }}
+                                        className="w-full bg-slate-800 p-3 rounded-xl outline-none text-xs font-black text-white uppercase border border-slate-700/50"
                                     />
-                                    {filtroUsuarioLog && (
-                                        <button 
-                                            onClick={() => { setFiltroUsuarioLog(''); setPaginaLog(1); }}
-                                            className="bg-slate-800 border border-slate-700 px-4 rounded-2xl text-[10px] font-black uppercase text-slate-400 hover:text-white transition-colors"
-                                        >
-                                            Limpar
-                                        </button>
-                                    )}
                                 </div>
 
-                                {/* Listagem de Logs Formatados */}
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     {logsPaginados.map(l => (
-                                        <div key={l.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col gap-2">
+                                        <div key={l.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-2">
                                             <div className="flex justify-between items-start gap-2">
-                                                <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${obterBadgeAcao(l.acao)}`}>
+                                                <span className={`text-[8px] px-2 py-0.5 rounded-full font-black tracking-wide ${obterBadgeAcao(l.acao)}`}>
                                                     {l.acao}
                                                 </span>
-                                                <span className="text-[9px] font-bold text-slate-500 whitespace-nowrap">
-                                                    {new Date(l.data).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                <span className="text-[9px] font-bold text-slate-500">
+                                                    {l.data ? new Date(l.data).toLocaleString('pt-BR') : ''}
                                                 </span>
                                             </div>
-                                            <div className="text-white text-xs font-bold leading-relaxed break-words">
-                                                {l.detalhes}
-                                            </div>
+                                            <p className="text-xs font-bold text-slate-200 leading-relaxed uppercase">{l.detalhes}</p>
                                             <div className="flex items-center gap-1.5 text-[9px] font-semibold text-slate-500 uppercase tracking-tight">
                                                 <span>👤 Operador:</span>
                                                 <span className="text-slate-300 font-bold">{l.usuario}</span>
                                             </div>
                                         </div>
                                     ))}
-
                                     {logsPaginados.length === 0 && (
                                         <div className="text-center text-slate-500 text-xs py-8 uppercase font-bold">Nenhum registro encontrado</div>
                                     )}
                                 </div>
 
-                                {/* Controles de Paginação */}
                                 {totalPaginasLog > 1 && (
                                     <div className="flex justify-between items-center bg-slate-900 p-3 rounded-2xl border border-slate-800 mt-4 select-none">
                                         <button 
-                                            disabled={paginaLogValida === 1}
+                                            disabled={paginaLogValida === 1} 
                                             onClick={() => setPaginaLog(prev => Math.max(prev - 1, 1))}
                                             className="bg-slate-800 disabled:opacity-30 disabled:pointer-events-none px-4 py-2 rounded-xl text-xs font-bold uppercase border border-slate-700 text-white hover:bg-slate-700 transition-colors"
                                         >
                                             Anterior
                                         </button>
-                                        
                                         <span className="text-xs font-black text-slate-400 uppercase tracking-tight">
                                             Página {paginaLogValida} de {totalPaginasLog}
                                         </span>
-
                                         <button 
-                                            disabled={paginaLogValida === totalPaginasLog}
+                                            disabled={paginaLogValida === totalPaginasLog} 
                                             onClick={() => setPaginaLog(prev => Math.min(prev + 1, totalPaginasLog))}
                                             className="bg-slate-800 disabled:opacity-30 disabled:pointer-events-none px-4 py-2 rounded-xl text-xs font-bold uppercase border border-slate-700 text-white hover:bg-slate-700 transition-colors"
                                         >
@@ -891,156 +931,92 @@
 
                         {pagina === 'financeiro' && userLogado.nivel === 'admin' && (
                             <div className="space-y-4">
-                                <h2 className="text-xl font-black text-orange-500 italic uppercase">Financeiro & Relatórios</h2>
-                                
-                                {/* Caixa de Hoje em Destaque Integrado com os Gastos */}
-                                <div className="bg-slate-900 p-5 rounded-3xl border-2 border-emerald-500/30 space-y-4 shadow-xl">
-                                    <div className="flex justify-between items-center">
-                                        <div className="text-xs font-black uppercase text-emerald-400 tracking-wider">FATURAMENTO DE HOJE ({faturamentoHoje.data})</div>
-                                        <span className="text-2xl font-black text-emerald-400">R$ {faturamentoHoje.totalDinheiro.toFixed(2)}</span>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800">
+                                        <div className="text-[9px] font-black uppercase text-slate-500">Caixa de Hoje</div>
+                                        <div className="text-xl font-black text-green-500 mt-1">R$ {faturamentoHoje.totalDinheiro.toFixed(2)}</div>
+                                        <div className="text-[8px] text-slate-400 font-bold mt-1 uppercase">Vendas: R$ {faturamentoHoje.vendas.toFixed(2)} | Rec: R$ {faturamentoHoje.recebidoNotas.toFixed(2)}</div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-800 text-[9px] font-bold text-slate-500 uppercase">
-                                        <div>
-                                            <div>Gastos de Hoje</div>
-                                            <div className="text-rose-400 mt-1 text-xs">R$ {faturamentoHoje.gastosHoje.toFixed(2)}</div>
-                                        </div>
-                                        <div>
-                                            <div>Saldo Líquido de Hoje</div>
-                                            <div className={`${faturamentoHoje.saldoHoje >= 0 ? 'text-emerald-400 font-black' : 'text-rose-500 font-black'} mt-1 text-xs`}>
-                                                R$ {faturamentoHoje.saldoHoje.toFixed(2)}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-800 text-[8px] font-bold text-slate-500 uppercase">
-                                        <div>
-                                            <div>Vendas Dir.</div>
-                                            <div className="text-white mt-1 text-[10px]">R$ {faturamentoHoje.vendas.toFixed(2)}</div>
-                                        </div>
-                                        <div>
-                                            <div>Recebido Notas</div>
-                                            <div className="text-white mt-1 text-[10px]">R$ {faturamentoHoje.recebidoNotas.toFixed(2)}</div>
-                                        </div>
-                                        <div>
-                                            <div>Fiado Gerado</div>
-                                            <div className="text-yellow-500 mt-1 text-[10px] font-black">R$ {faturamentoHoje.fiado.toFixed(2)}</div>
-                                        </div>
+                                    <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800">
+                                        <div className="text-[9px] font-black uppercase text-slate-500">Despesas Hoje</div>
+                                        <div className="text-xl font-black text-rose-500 mt-1">R$ {faturamentoHoje.gastosHoje.toFixed(2)}</div>
+                                        <div className={`text-[8px] font-black mt-1 uppercase ${faturamentoHoje.saldoHoje >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>Saldo: R$ {faturamentoHoje.saldoHoje.toFixed(2)}</div>
                                     </div>
                                 </div>
 
-                                {/* Listagem do Histórico dos Outros Dias integrado com Gastos */}
                                 <div className="space-y-2">
-                                    <h3 className="text-xs font-black uppercase text-slate-400 italic tracking-wider mt-4">Histórico de Dias Anteriores</h3>
-                                    {historicoFinanceiro
-                                        .filter(d => d.data !== new Date().toLocaleDateString('pt-BR')) // Filtra fora o hoje para não duplicar
-                                        .map(d => (
-                                            <div key={d.data} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col gap-2 shadow-sm">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-xs font-black text-slate-400 uppercase tracking-wider">{d.data}</span>
-                                                    <div className="text-right">
-                                                        <div className="text-sm font-black text-emerald-500">Caixa: R$ {d.totalDinheiro.toFixed(2)}</div>
-                                                        <div className={`text-[10px] font-black ${d.saldoLiquido >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                                                            Líq: R$ {d.saldoLiquido.toFixed(2)}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-4 gap-1 pt-2 border-t border-slate-800/60 text-[8px] font-bold text-slate-500 uppercase">
-                                                    <div>
-                                                        <div>Vendas</div>
-                                                        <div className="text-slate-300 mt-0.5">R$ {d.vendas.toFixed(2)}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div>Rec. Notas</div>
-                                                        <div className="text-slate-300 mt-0.5">R$ {d.recebidoNotas.toFixed(2)}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div>Gastos</div>
-                                                        <div className="text-rose-400 mt-0.5 font-bold">R$ {d.gastos.toFixed(2)}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div>Fiado</div>
-                                                        <div className="text-yellow-500/80 mt-0.5">R$ {d.fiado.toFixed(2)}</div>
-                                                    </div>
+                                    <div className="text-xs font-black text-slate-400 uppercase tracking-tight pl-1">Histórico de Fechamento Diário</div>
+                                    {historicoFinanceiro.map(d => (
+                                        <div key={d.data} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-2">
+                                            <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
+                                                <span className="text-xs font-black text-orange-500">{d.data}</span>
+                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${d.saldoLiquido >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                                    Saldo: R$ {d.saldoLiquido.toFixed(2)}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-y-1 text-[10px] text-slate-400 font-bold uppercase">
+                                                <div>💰 Dinheiro/Pix: <span className="text-white font-black">R$ {d.totalDinheiro.toFixed(2)}</span></div>
+                                                <div>📉 Despesas: <span className="text-rose-400 font-black">R$ {d.gastos.toFixed(2)}</span></div>
+                                                <div className="col-span-2 text-slate-500 text-[9px] pt-1 border-t border-slate-800/50">
+                                                    Detalhamento bruto: Balcão: R$ {d.vendas.toFixed(2)} | Fiado Lançado: R$ {d.fiado.toFixed(2)}
                                                 </div>
                                             </div>
-                                        ))
-                                    }
-                                    {historicoFinanceiro.length <= 1 && (
-                                        <div className="text-center text-slate-500 text-xs py-8 uppercase font-bold">Nenhum histórico financeiro anterior encontrado</div>
-                                    )}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
 
                         {pagina === 'gastos' && userLogado.nivel === 'admin' && (
                             <div className="space-y-4">
-                                <h2 className="text-xl font-black text-orange-500 italic uppercase">Controle de Gastos</h2>
-
-                                {/* Formulário de Lançamento de Gasto */}
-                                <form onSubmit={adicionarNovoGasto} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3 shadow-inner">
-                                    <h3 className="text-xs font-black uppercase text-orange-500 italic">Lançar Novo Gasto / Insumo</h3>
-                                    <input name="descricao" placeholder="DESCRIÇÃO (ex: CARVÃO, GELO, ALUGUEL...)" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase text-white border border-slate-700/50" required />
-                                    <input name="valor" type="number" step="0.01" placeholder="VALOR (R$)" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white border border-slate-700/50" required />
-                                    <button className="w-full bg-orange-600 p-3 rounded-xl font-black uppercase text-xs text-white">Lançar Gasto</button>
+                                <form onSubmit={adicionarNovoGasto} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
+                                    <h3 className="text-xs font-black uppercase text-orange-500 italic">Lançar Despesa / Gasto</h3>
+                                    <input name="descricao" placeholder="DESCRIÇÃO DA DESPESA (ex: COMPRA DE CARNE)" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase border border-slate-700/50 text-white" required />
+                                    <input name="valor" type="number" step="0.01" placeholder="VALOR (R$)" className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold border border-slate-700/50 text-white" required />
+                                    <button className="w-full bg-rose-600 p-3.5 rounded-xl font-black uppercase text-xs text-white">Salvar Despesa</button>
                                 </form>
 
-                                {/* Listagem e Soma por Mês */}
                                 <div className="space-y-4">
                                     {gastosMensais.map(m => (
-                                        <div key={m.mesAno} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
-                                            <div className="flex justify-between items-center border-b border-slate-800/60 pb-2">
-                                                <span className="text-xs font-black uppercase text-orange-500 italic">{m.mesAno}</span>
-                                                <span className="text-sm font-black text-rose-500">Total: R$ {m.total.toFixed(2)}</span>
+                                        <div key={m.mesAno} className="space-y-2">
+                                            <div className="flex justify-between items-center pl-1 font-black uppercase text-xs">
+                                                <span className="text-slate-400 italic">{m.mesAno}</span>
+                                                <span className="text-rose-500">Total: R$ {m.total.toFixed(2)}</span>
                                             </div>
-                                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                                                {m.itens.map(g => (
-                                                    <div key={g.id} className="bg-slate-850 p-3 rounded-xl flex justify-between items-center border border-slate-800 hover:border-slate-700 transition-colors">
-                                                        <div>
-                                                            <div className="text-xs font-black uppercase text-white">{g.descricao}</div>
-                                                            <div className="text-[9px] text-slate-500 font-bold uppercase mt-0.5">
-                                                                {new Date(g.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="text-xs font-black text-rose-400">R$ {Number(g.valor).toFixed(2)}</span>
-                                                            <button type="button" onClick={async () => {
-                                                                if (confirm(`Deseja mesmo excluir o gasto "${g.descricao}"?`)) {
-                                                                    await supabaseClient.from('gastos').delete().eq('id', g.id);
-                                                                    registrarLog("GASTO", `Removeu gasto: ${g.descricao}`);
-                                                                    buscarDados();
-                                                                }
-                                                            }} className="text-red-500 font-bold hover:text-red-400 transition-colors">✕</button>
-                                                        </div>
+                                            {m.itens.map(g => (
+                                                <div key={g.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
+                                                    <div>
+                                                        <div className="font-black uppercase text-xs text-white">{g.descricao}</div>
+                                                        <div className="text-[9px] font-bold text-slate-500 mt-0.5">{g.data ? new Date(g.data).toLocaleDateString('pt-BR') : ''}</div>
                                                     </div>
-                                                ))}
-                                            </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-rose-400 font-black text-sm">R$ {Number(g.valor || 0).toFixed(2)}</span>
+                                                        <button onClick={async () => { if(confirm(`Excluir despesa "${g.descricao}"?`)){ await supabaseClient.from('gastos').delete().eq('id', g.id); registrarLog("GASTO", `Excluiu despesa: ${g.descricao} - R$ ${Number(g.valor).toFixed(2)}`); buscarDados(); } }} className="text-slate-600 hover:text-red-500 font-bold text-xs p-1">✕</button>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     ))}
-                                    {gastos.length === 0 && (
-                                        <div className="text-center text-slate-500 text-xs py-8 uppercase font-black tracking-wider">Nenhum gasto registrado.</div>
-                                    )}
                                 </div>
                             </div>
                         )}
-                        
+
                         {pagina === 'notas' && userLogado.nivel === 'admin' && (
                             <div className="space-y-4">
-                                <h2 className="text-xl font-black text-orange-500 italic uppercase">Notas Pendentes</h2>
-                                
-                                {/* Dashboard de Resumo de Notas */}
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800 flex flex-col justify-between">
-                                        <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider">TOTAL A RECEBER</div>
+                                <div className="grid grid-cols-2 gap-3 bg-slate-900 p-4 rounded-3xl border border-slate-800">
+                                    <div className="flex flex-col justify-between border-r border-slate-800 pr-2">
+                                        <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider">TOTAL PARA RECEBER</div>
                                         <div className="text-2xl font-black text-green-500 mt-2">R$ {totalParaReceber.toFixed(2)}</div>
                                     </div>
-                                    <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800 flex flex-col justify-between">
+                                    <div className="flex flex-col justify-between pl-2">
                                         <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider">NOTAS EM ABERTO</div>
                                         <div className="text-xl font-black text-orange-500 mt-2">
-                                            {totalNotasAbertas} <span className="text-[9px] font-bold text-slate-400 block mt-0.5">({totalClientesPendentes} Clientes)</span>
+                                            {totalNotasAbertas}
+                                            <span className="text-[9px] font-bold text-slate-400 block mt-0.5">({totalClientesPendentes} Clientes)</span>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Listagem agrupada por Cliente */}
                                 <div className="space-y-2">
                                     {notasAgrupadas.map(g => (
                                         <div key={g.cliente} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
@@ -1051,15 +1027,11 @@
                                                     {g.notasOriginais.length} {g.notasOriginais.length === 1 ? 'Nota em aberto' : 'Notas acumuladas'}
                                                 </div>
                                             </div>
-                                            <button 
-                                                onClick={() => receberPagamentoCliente(g)}
-                                                className="bg-green-600 p-3 rounded-xl text-[10px] font-black uppercase active:scale-95 transition-transform"
-                                            >
+                                            <button onClick={() => receberPagamentoCliente(g)} className="bg-green-600 p-3 rounded-xl text-[10px] font-black uppercase active:scale-95 transition-transform">
                                                 Receber
                                             </button>
                                         </div>
                                     ))}
-
                                     {notasAgrupadas.length === 0 && (
                                         <div className="text-center text-slate-500 text-xs py-8 uppercase font-bold">Nenhum cliente pendente</div>
                                     )}
@@ -1071,60 +1043,10 @@
                     <nav className="fixed bottom-0 w-full bg-slate-900/95 backdrop-blur-md p-4 border-t border-slate-800 flex gap-2 z-40 overflow-x-auto no-scrollbar">
                         {abasDisponiveis.map(p => (
                             <button key={p} onClick={() => setPagina(p)} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase transition-all ${pagina === p ? 'active-tab shadow-lg shadow-orange-600/30' : 'bg-slate-800 text-slate-500'}`}>
-                                {p === 'home' ? 'Mesas' : p === 'financeiro' ? 'Financeiro' : p === 'gastos' ? 'Gastos' : p}
+                                {p === 'home' ? '🪑 Mesas' : p === 'notas' ? '📋 Caderno Fiado' : p === 'estoque' ? '📦 Estoque' : p === 'equipe' ? '👥 Equipe' : p === 'logs' ? '📜 Logs' : p === 'financeiro' ? '📊 Caixa' : '📉 Despesas'}
                             </button>
                         ))}
                     </nav>
-
-                    {/* Modal Moderno para Edição de Produtos */}
-                    {produtoEditando && (
-                        <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[70] flex items-center justify-center p-6">
-                            <form onSubmit={atualizarProduto} className="bg-slate-900 w-full max-w-sm rounded-[30px] p-6 border border-slate-800 space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-sm font-black uppercase text-orange-500 italic">Editar Produto</h3>
-                                    <button type="button" onClick={() => setProdutoEditando(null)} className="text-slate-500 hover:text-white font-bold text-xs uppercase">Cancelar</button>
-                                </div>
-                                
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Nome</label>
-                                        <input name="editNome" defaultValue={produtoEditando.nome} className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold uppercase text-white border border-slate-700/50" required />
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Preço Compra</label>
-                                            <input name="editPrecoCompra" type="number" step="0.01" defaultValue={produtoEditando.preco_compra || 0} className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white border border-slate-700/50" required />
-                                        </div>
-                                        <div>
-                                            <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Preço Venda</label>
-                                            <input name="editPreco" type="number" step="0.01" defaultValue={produtoEditando.preco || 0} className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white border border-slate-700/50" required />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Estoque</label>
-                                            <input name="editEstoque" type="number" defaultValue={produtoEditando.estoque || 0} className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-white border border-slate-700/50" required />
-                                        </div>
-                                        <div>
-                                            <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Categoria</label>
-                                            <select name="editCategoria" defaultValue={produtoEditando.categoria || 'Outros'} className="w-full bg-slate-800 p-3 rounded-xl outline-none text-sm font-bold text-slate-300 uppercase border border-slate-700/50">
-                                                {categoriasAtendimento
-                                                    .filter(cat => cat.id !== 'Todos')
-                                                    .map(cat => (
-                                                        <option key={cat.id} value={cat.nome}>{cat.nome}</option>
-                                                    ))
-                                                }
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <button className="w-full bg-orange-600 p-3.5 rounded-xl font-black uppercase text-xs text-white">Salvar Alterações</button>
-                            </form>
-                        </div>
-                    )}
 
                     {idMesaAberta && (
                         <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[60] flex items-end">
@@ -1133,85 +1055,58 @@
                                     <h2 className="text-2xl font-black text-orange-500 italic uppercase">Atendimento Mesa {idMesaAberta}</h2>
                                     <button onClick={() => { setIdMesaAberta(null); setBuscaProduto(''); setCategoriaSelecionada('Todos'); }} className="bg-slate-800 w-10 h-10 rounded-full font-bold">✕</button>
                                 </div>
-                                
-                                {/* Resumo de Consumo Compactado */}
-                                <div className="bg-slate-950 p-3 rounded-2xl mb-3 border border-slate-800 shadow-inner">
-                                    <div className="max-h-20 overflow-y-auto mb-1.5 space-y-1">
-                                        {(mesas[idMesaAberta-1]?.itens || []).map((it, i) => (
-                                            <div key={i} className="flex justify-between text-[10px] font-bold uppercase text-slate-400">
-                                                <span>{it.produto_nome}</span>
-                                                <div className="flex gap-4">
-                                                    <span>R$ {Number(it.preco_unidade || 0).toFixed(2)}</span>
-                                                    <button onClick={() => deletarItemPedido(it.id)} className="text-red-500 font-bold">X</button>
-                                                </div>
+
+                                <div className="bg-slate-950 p-4 rounded-3xl mb-4 border border-slate-800 max-h-[22vh] overflow-y-auto no-scrollbar space-y-1.5">
+                                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-tight mb-1">Consumo Atual:</div>
+                                    {mesaAtual && mesaAtual.itens.map(item => (
+                                        <div key={item.id} className="flex justify-between items-center bg-slate-900 p-2.5 rounded-xl border border-slate-800/60">
+                                            <span className="text-xs font-bold uppercase truncate max-w-[65%]">{item.nome_produto}</span>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs font-black text-orange-400">R$ {Number(item.preco_unidade).toFixed(2)}</span>
+                                                <button onClick={() => deletarItemPedido(item.id)} className="text-red-500 font-bold text-xs p-1 hover:text-red-400">✕</button>
                                             </div>
+                                        </div>
+                                    ))}
+                                    {(!mesaAtual || mesaAtual.itens.length === 0) && (
+                                        <div className="text-slate-600 text-[10px] font-bold uppercase py-2 text-center">Nenhum item lançado nesta mesa</div>
+                                    )}
+                                </div>
+
+                                <div className="flex justify-between items-center bg-slate-950 px-4 py-3 rounded-2xl mb-4 border border-slate-800">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase">Total da Mesa:</span>
+                                    <span className="text-xl font-black text-green-500">R$ {(mesaAtual ? mesaAtual.total : 0).toFixed(2)}</span>
+                                </div>
+
+                                <div className="space-y-2 mb-4 select-none">
+                                    <input value={buscaProduto} onChange={e => setBuscaProduto(e.target.value)} placeholder="🔍 BUSCAR PRODUTO..." className="w-full p-3.5 bg-slate-950 rounded-2xl text-xs font-bold uppercase outline-none border border-slate-800 text-white" />
+                                    
+                                    <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1">
+                                        {categoriasAtendimento.map(cat => (
+                                            <button key={cat.id} onClick={() => setCategoriaSelecionada(cat.id)} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase whitespace-nowrap border transition-all ${categoriaSelecionada === cat.id ? 'bg-orange-600 text-white border-orange-500 font-black' : 'bg-slate-950 text-slate-400 border-slate-800/80'}`}>
+                                                {cat.emoji} {cat.label}
+                                            </button>
                                         ))}
                                     </div>
-                                    <div className="text-right text-xl font-black pt-1.5 border-t border-slate-800 text-white">R$ {(mesas[idMesaAberta-1]?.total || 0).toFixed(2)}</div>
                                 </div>
 
-                                {/* Campo de Busca de Produtos Compactado */}
-                                <div className="mb-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="🔍 BUSCAR PRODUTO..." 
-                                        value={buscaProduto}
-                                        onChange={(e) => setBuscaProduto(e.target.value)}
-                                        className="w-full bg-slate-800 p-3 rounded-xl outline-none text-xs font-bold uppercase border border-slate-700 text-white placeholder-slate-500 focus:border-orange-500 transition-colors"
-                                    />
-                                </div>
-
-                                {/* Filtro de Categorias Dinâmico (Scroll Horizontal com Emojis) */}
-                                <div className="flex gap-2.5 overflow-x-auto no-scrollbar mb-3 pb-1 select-none">
-                                    {categoriasAtendimento.map(cat => (
-                                        <button
-                                            key={cat.id}
-                                            type="button"
-                                            onClick={() => setCategoriaSelecionada(cat.id)}
-                                            className={`flex-none flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider border-2 transition-all duration-200 active:scale-95 ${
-                                                categoriaSelecionada === cat.id
-                                                    ? 'bg-orange-600 border-orange-400 text-white shadow-lg shadow-orange-600/30 scale-105'
-                                                    : 'bg-slate-800 border-slate-700/80 text-slate-300 hover:border-slate-600'
-                                            }`}
-                                        >
-                                            <span className="text-sm">{cat.emoji}</span>
-                                            <span>{cat.label}</span>
+                                <div className="flex-1 overflow-y-auto no-scrollbar grid grid-cols-2 gap-2 mb-6 min-h-[20vh]">
+                                    {produtos.filter(p => {
+                                        const matchesCategory = categoriaSelecionada === 'Todos' || (p.categoria || 'Outros').toLowerCase() === categoriaSelecionada.toLowerCase();
+                                        const matchesSearch = (p.nome || '').toLowerCase().includes(buscaProduto.toLowerCase());
+                                        return matchesCategory && matchesSearch;
+                                    }).map(p => (
+                                        <button key={p.id} onClick={() => lancarItemMesa(p)} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 text-left active:scale-95 transition-transform flex flex-col justify-between h-[85px]">
+                                            <div className="font-black text-[11px] uppercase truncate w-full text-white">{p.nome}</div>
+                                            <div className="w-full flex flex-col mt-1">
+                                                <span className="text-xs font-black text-orange-500">R$ {Number(p.preco || 0).toFixed(2)}</span>
+                                                <span className="text-[9px] font-bold text-slate-500 mt-0.5 uppercase">
+                                                    Estoque: <span className={(p.estoque || 0) > 5 ? 'text-green-500' : 'text-red-500 font-black'}>{p.estoque || 0}</span>
+                                                </span>
+                                            </div>
                                         </button>
                                     ))}
-                                </div>
-
-                                {/* Listagem de Produtos Filtrada com Quantidade de Estoque */}
-                                <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-2 mb-4 pr-1 max-h-[30vh]">
-                                    {produtos
-                                        .filter(p => {
-                                            // Filtra por Categoria selecionada
-                                            const matchesCategory = categoriaSelecionada === 'Todos' || 
-                                                (p.categoria || 'Outros').toLowerCase() === categoriaSelecionada.toLowerCase();
-                                            
-                                            // Filtra por busca textual
-                                            const nomeLimpo = (p.nome || '').toLowerCase();
-                                            const buscaLimpa = (buscaProduto || '').toLowerCase();
-                                            const matchesSearch = nomeLimpo.includes(buscaLimpa);
-                                            
-                                            return matchesCategory && matchesSearch;
-                                        })
-                                        .map(p => (
-                                            <button 
-                                                key={p.id} 
-                                                onClick={() => adicionarProdutoMesa(p)} 
-                                                className="p-3 bg-slate-800 rounded-xl text-left border border-slate-700 active:scale-95 transition-transform"
-                                            >
-                                                <div className="text-[10px] font-black text-slate-400 uppercase truncate">{(p.nome || 'Sem nome')}</div>
-                                                <div className="font-black text-white text-xs mt-0.5">R$ {Number(p.preco || 0).toFixed(2)}</div>
-                                                <div className="text-[8px] font-bold text-slate-500 mt-1.5 uppercase">
-                                                    Estoque: <span className={(p.estoque || 0) > 5 ? 'text-green-500' : 'text-red-500 font-black'}>{p.estoque || 0}</span>
-                                                </div>
-                                            </button>
-                                        ))
-                                    }
                                     {produtos.filter(p => {
-                                        const matchesCategory = categoriaSelecionada === 'Todos' || 
-                                            (p.categoria || 'Outros').toLowerCase() === categoriaSelecionada.toLowerCase();
+                                        const matchesCategory = categoriaSelecionada === 'Todos' || (p.categoria || 'Outros').toLowerCase() === categoriaSelecionada.toLowerCase();
                                         const matchesSearch = (p.nome || '').toLowerCase().includes(buscaProduto.toLowerCase());
                                         return matchesCategory && matchesSearch;
                                     }).length === 0 && (
