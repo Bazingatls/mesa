@@ -85,7 +85,7 @@
             const [userLogado, setUserLogado] = useState(null);
             const [pagina, setPagina] = useState('home');
             
-            // Inicialização segura de mesas
+            // Inicialização dinâmica que se sincroniza com o Supabase
             const [qtdMesas, setQtdMesas] = useState(() => {
                 const num = Number(safeGetItem('jb_qtd_mesas', '12'));
                 return (num && num > 0) ? num : 12;
@@ -110,60 +110,6 @@
             const [filtroUsuarioLog, setFiltroUsuarioLog] = useState('');
             const [paginaLog, setPaginaLog] = useState(1);
             const logsPorPagina = 30;
-
-            const buscarDados = useCallback(async () => {
-                try {
-                    const { data: prods } = await supabaseClient.from('produtos').select('*').order('nome');
-                    if (prods) setProdutos(prods);
-
-                    // Busca categorias dinâmicas do banco de dados
-                    const { data: cats, error: catsError } = await supabaseClient.from('categorias').select('*').order('nome');
-                    if (cats) {
-                        if (cats.length === 0) {
-                            // Se a tabela estiver vazia, semeamos as padrões originais para facilitar o gerenciamento
-                            const padroes = [
-                                { nome: 'Cerveja', emoji: '🍺' },
-                                { nome: 'Bar', emoji: '🍹' },
-                                { nome: 'Espeto', emoji: '🍢' },
-                                { nome: 'Doses', emoji: '🥃' },
-                                { nome: 'Cozinha', emoji: '🍳' },
-                                { nome: 'Outros', emoji: '📦' }
-                            ];
-                            await supabaseClient.from('categorias').insert(padroes);
-                            const { data: recats } = await supabaseClient.from('categorias').select('*').order('nome');
-                            if (recats) setCategoriasDb(recats);
-                        } else {
-                            setCategoriasDb(cats);
-                        }
-                    } else if (catsError) {
-                        // Mantém como null se a tabela ainda não tiver sido criada
-                        setCategoriasDb(null);
-                    }
-
-                    const { data: pedidos } = await supabaseClient.from('pedidos').select('*');
-                    const novasMesas = Array.from({ length: qtdMesas }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' }));
-                    if (pedidos) {
-                        pedidos.forEach(p => {
-                            const idx = p.mesa - 1;
-                            if (novasMesas[idx]) {
-                                novasMesas[idx].itens.push(p);
-                                novasMesas[idx].total += Number(p.preco_unidade);
-                                if (p.apelido_mesa) novasMesas[idx].apelido = p.apelido_mesa;
-                            }
-                        });
-                    }
-                    setMesas(novasMesas);
-
-                    const { data: nts } = await supabaseClient.from('notas_pendentes').select('*').eq('pago', false).order('data', { ascending: false });
-                    if (nts) setNotas(nts);
-
-                    const { data: lg } = await supabaseClient.from('logs_sistema').select('*').order('data', { ascending: false }).limit(1000);
-                    if (lg) setLogs(lg);
-
-                    const { data: eq = [] } = await supabaseClient.from('usuarios_gestao').select('id, usuario, nivel').order('usuario');
-                    if (eq) setEquipe(eq);
-                } catch (e) { console.error(e); }
-            }, [qtdMesas]);
 
             // Mapeamento de categorias unificadas (Une o 'Todos' virtual com as categorias reais do banco de dados)
             const categoriasAtendimento = useMemo(() => {
@@ -197,6 +143,74 @@
                 return listaUnificada;
             }, [categoriasDb]);
 
+            const buscarDados = useCallback(async () => {
+                try {
+                    const { data: prods } = await supabaseClient.from('produtos').select('*').order('nome');
+                    if (prods) setProdutos(prods);
+
+                    // Busca categorias dinâmicas do banco de dados
+                    const { data: cats, error: catsError } = await supabaseClient.from('categorias').select('*').order('nome');
+                    if (cats) {
+                        if (cats.length === 0) {
+                            // Se a tabela estiver vazia, semeamos as padrões originais para facilitar o gerenciamento
+                            const padroes = [
+                                { nome: 'Cerveja', emoji: '🍺' },
+                                { nome: 'Bar', emoji: '🍹' },
+                                { nome: 'Espeto', emoji: '🍢' },
+                                { nome: 'Doses', emoji: '🥃' },
+                                { nome: 'Cozinha', emoji: '🍳' },
+                                { nome: 'Outros', emoji: '📦' }
+                            ];
+                            await supabaseClient.from('categorias').insert(padroes);
+                            const { data: recats } = await supabaseClient.from('categorias').select('*').order('nome');
+                            if (recats) setCategoriasDb(recats);
+                        } else {
+                            setCategoriasDb(cats);
+                        }
+                    } else if (catsError) {
+                        // Mantém como null se a tabela ainda não tiver sido criada
+                        setCategoriasDb(null);
+                    }
+
+                    // Sincronização global da quantidade de mesas através do banco
+                    const { data: config } = await supabaseClient.from('configuracoes_sistema').select('*').eq('chave', 'qtd_mesas').single();
+                    let mesasCount = qtdMesas;
+                    if (config) {
+                        const num = Number(config.valor);
+                        if (num && num > 0) {
+                            mesasCount = num;
+                            if (num !== qtdMesas) {
+                                setQtdMesas(num);
+                                safeSetItem('jb_qtd_mesas', num); // Atualiza cache rápido local
+                            }
+                        }
+                    }
+
+                    const { data: pedidos } = await supabaseClient.from('pedidos').select('*');
+                    const novasMesas = Array.from({ length: mesasCount }, (_, i) => ({ id: i + 1, itens: [], total: 0, apelido: '' }));
+                    if (pedidos) {
+                        pedidos.forEach(p => {
+                            const idx = p.mesa - 1;
+                            if (novasMesas[idx]) {
+                                novasMesas[idx].itens.push(p);
+                                novasMesas[idx].total += Number(p.preco_unidade);
+                                if (p.apelido_mesa) novasMesas[idx].apelido = p.apelido_mesa;
+                            }
+                        });
+                    }
+                    setMesas(novasMesas);
+
+                    const { data: nts } = await supabaseClient.from('notas_pendentes').select('*').eq('pago', false).order('data', { ascending: false });
+                    if (nts) setNotas(nts);
+
+                    const { data: lg } = await supabaseClient.from('logs_sistema').select('*').order('data', { ascending: false }).limit(1000);
+                    if (lg) setLogs(lg);
+
+                    const { data: eq = [] } = await supabaseClient.from('usuarios_gestao').select('id, usuario, nivel').order('usuario');
+                    if (eq) setEquipe(eq);
+                } catch (e) { console.error(e); }
+            }, [qtdMesas]);
+
             useEffect(() => {
                 const sessao = safeGetItem('jb_user_data', null);
                 if (sessao) {
@@ -222,6 +236,19 @@
                 if(!userLogado) return;
                 await supabaseClient.from('logs_sistema').insert([{ usuario: userLogado.usuario, acao, detalhes }]);
                 buscarDados();
+            };
+
+            // ---- SALVAR QUANTIDADE DE MESAS NO BANCO DE DADOS ----
+            const salvarNovaQtdMesas = async (novaQtd) => {
+                setQtdMesas(novaQtd);
+                safeSetItem('jb_qtd_mesas', novaQtd);
+                try {
+                    await supabaseClient.from('configuracoes_sistema').update({ valor: String(novaQtd) }).eq('chave', 'qtd_mesas');
+                    registrarLog("MESAS", `Alterou a quantidade total de mesas para ${novaQtd}`);
+                    buscarDados();
+                } catch (err) {
+                    console.error(err);
+                }
             };
 
             // ---- DEFINIÇÃO DE ABAS DISPONÍVEIS CONFORME NÍVEL DE ACESSO ----
@@ -495,7 +522,7 @@
                     <main className="p-4">
                         {pagina === 'home' && (
                             <div className="space-y-4">
-                                {/* Painel de Adicionar/Remover Mesas */}
+                                {/* Painel de Adicionar/Remover Mesas Sincronizado */}
                                 <div className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800">
                                     <div className="text-xs font-black uppercase text-slate-400">Total: {qtdMesas} Mesas</div>
                                     <div className="flex gap-2">
@@ -507,8 +534,7 @@
                                                         if (!confirm("A última mesa possui consumo ativo! Deseja realmente removê-la?")) return;
                                                     }
                                                     const novaQtd = qtdMesas - 1;
-                                                    setQtdMesas(novaQtd);
-                                                    safeSetItem('jb_qtd_mesas', novaQtd);
+                                                    salvarNovaQtdMesas(novaQtd); // Envia ao Supabase
                                                 }
                                             }}
                                             className="bg-red-600/10 border border-red-500/20 text-red-500 px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase"
@@ -518,8 +544,7 @@
                                         <button 
                                             onClick={() => {
                                                 const novaQtd = qtdMesas + 1;
-                                                setQtdMesas(novaQtd);
-                                                safeSetItem('jb_qtd_mesas', novaQtd);
+                                                salvarNovaQtdMesas(novaQtd); // Envia ao Supabase
                                             }}
                                             className="bg-green-600/10 border border-green-500/20 text-green-500 px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase"
                                         >
