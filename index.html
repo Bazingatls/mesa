@@ -105,7 +105,6 @@
             const [paginaLog, setPaginaLog] = useState(1);
             const logsPorPagina = 30;
 
-            // ESTADO DE GASTOS
             const [listaGastos, setListaGastos] = useState([]);
 
             const categoriasAtendimento = useMemo(() => {
@@ -185,7 +184,6 @@
                     const { data: eq = [] } = await supabaseClient.from('usuarios_gestao').select('id, usuario, nivel').order('usuario');
                     if (eq) setEquipe(eq);
 
-                    // BUSCA DE GASTOS DO SUPABASE
                     const { data: gst } = await supabaseClient.from('gastos').select('*').order('data', { ascending: false });
                     if (gst) setListaGastos(gst);
 
@@ -228,7 +226,6 @@
                 } catch (err) { console.error(err); }
             };
 
-            // ABAS COM GASTOS
             const abasDisponiveis = useMemo(() => {
                 if (userLogado && userLogado.nivel === 'admin') {
                     return ['home', 'notas', 'estoque', 'equipe', 'logs', 'financeiro', 'gastos'];
@@ -290,28 +287,49 @@
                 return logsFiltrados.slice(inicio, inicio + logsPorPagina);
             }, [logsFiltrados, paginaLogValida]);
 
-            const historicoFinanceiro = useMemo(() => {
+            // ---- LÓGICA DO FINANCEIRO MELHORADA ----
+            const resumoFinanceiroTotal = useMemo(() => {
                 const dias = {};
+                
                 logs.forEach(l => {
                     if (!l.data) return;
-                    const dataFormatada = new Date(l.data).toLocaleDateString('pt-BR');
-                    if (!dias[dataFormatada]) { dias[dataFormatada] = { data: dataFormatada, dataObj: new Date(l.data), vendas: 0, fiado: 0, recebidoNotas: 0, totalDinheiro: 0 }; }
+                    const dataF = new Date(l.data).toLocaleDateString('pt-BR');
+                    if (!dias[dataF]) {
+                        dias[dataF] = { data: dataF, dataObj: new Date(l.data), vendas: 0, recebidoFiado: 0, saidas: 0, fiadoGerado: 0 };
+                    }
+                    
                     const acao = (l.acao || '').toUpperCase();
                     const match = (l.detalhes || '').match(/R\$\s*([0-9.,]+)/i);
                     const valor = match ? parseFloat(match[1].replace(',', '.')) : 0;
-                    if (acao === 'VENDA') dias[dataFormatada].vendas += valor;
-                    else if (acao === 'FIADO') dias[dataFormatada].fiado += valor;
-                    else if (acao.includes('PAGO')) dias[dataFormatada].recebidoNotas += valor;
+                    
+                    if (acao === 'VENDA') dias[dataF].vendas += valor;
+                    else if (acao.includes('PAGO') || acao.includes('RECEB')) dias[dataF].recebidoFiado += valor;
+                    else if (acao === 'FIADO') dias[dataF].fiadoGerado += valor;
                 });
-                return Object.values(dias).map(d => ({ ...d, totalDinheiro: d.vendas + d.recebidoNotas })).sort((a, b) => b.dataObj - a.dataObj);
-            }, [logs]);
 
-            const faturamentoHoje = useMemo(() => {
-                const hojeFormatado = new Date().toLocaleDateString('pt-BR');
-                return historicoFinanceiro.find(d => d.data === hojeFormatado) || { data: hojeFormatado, vendas: 0, fiado: 0, recebidoNotas: 0, totalDinheiro: 0 };
-            }, [historicoFinanceiro]);
+                listaGastos.forEach(g => {
+                    if (!g.data) return;
+                    const dataF = new Date(g.data).toLocaleDateString('pt-BR');
+                    if (!dias[dataF]) {
+                        dias[dataF] = { data: dataF, dataObj: new Date(g.data), vendas: 0, recebidoFiado: 0, saidas: 0, fiadoGerado: 0 };
+                    }
+                    dias[dataF].saidas += Number(g.valor || 0);
+                });
+                
+                return Object.values(dias)
+                    .map(d => ({
+                        ...d,
+                        totalEntradas: d.vendas + d.recebidoFiado,
+                        saldoFinal: (d.vendas + d.recebidoFiado) - d.saidas
+                    }))
+                    .sort((a, b) => b.dataObj - a.dataObj);
+            }, [logs, listaGastos]);
 
-            // LÓGICA DE GASTOS
+            const finHoje = useMemo(() => {
+                const hoje = new Date().toLocaleDateString('pt-BR');
+                return resumoFinanceiroTotal.find(d => d.data === hoje) || { data: hoje, vendas: 0, recebidoFiado: 0, saidas: 0, totalEntradas: 0, saldoFinal: 0, fiadoGerado: 0 };
+            }, [resumoFinanceiroTotal]);
+
             const adicionarNovoGasto = async (e) => {
                 e.preventDefault();
                 const descricao = e.target.descricao.value.trim();
@@ -463,7 +481,7 @@
                                 </div>
                                 <form onSubmit={async (e) => {
                                     e.preventDefault();
-                                    await supabaseClient.from('produtos').insert([{ nome: e.target.nome.value, preco_compra: e.target.preco_compra.value, preco: e.target.preco.value, estoque: e.target.estoque.value, categoria: e.target.categoria.value }]);
+                                    await supabaseClient.from('produtos').insert([{ nome: e.target.nome.value.toUpperCase(), preco_compra: e.target.preco_compra.value, preco: e.target.preco.value, estoque: e.target.estoque.value, categoria: e.target.categoria.value }]);
                                     e.target.reset(); buscarDados();
                                 }} className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-3">
                                     <h3 className="text-xs font-black uppercase text-orange-500 italic">Novo Produto</h3>
@@ -520,16 +538,51 @@
 
                         {pagina === 'financeiro' && userLogado.nivel === 'admin' && (
                             <div className="space-y-4">
-                                <h2 className="text-xl font-black text-orange-500 italic uppercase">Financeiro</h2>
-                                <div className="bg-slate-900 p-5 rounded-3xl border-2 border-emerald-500/30 space-y-4">
-                                    <div className="flex justify-between items-center"><div className="text-xs font-black uppercase text-emerald-400">HOJE: {faturamentoHoje.data}</div><span className="text-2xl font-black text-emerald-400">R$ {faturamentoHoje.totalDinheiro.toFixed(2)}</span></div>
-                                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-800 text-[9px] font-bold text-slate-500 uppercase">
-                                        <div>Vendas: R$ {faturamentoHoje.vendas.toFixed(2)}</div><div>Recebido: R$ {faturamentoHoje.recebidoNotas.toFixed(2)}</div><div>Fiado: R$ {faturamentoHoje.fiado.toFixed(2)}</div>
+                                <h2 className="text-xl font-black text-orange-500 italic uppercase">Resumo Financeiro</h2>
+                                
+                                <div className="bg-slate-900 p-6 rounded-[32px] border-2 border-slate-800 shadow-xl space-y-4">
+                                    <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Caixa Hoje ({finHoje.data})</span>
+                                        <span className={`text-xl font-black ${finHoje.saldoFinal >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                            R$ {finHoje.saldoFinal.toFixed(2)}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <div className="text-[9px] font-black text-slate-500 uppercase">Entradas</div>
+                                            <div className="text-lg font-black text-emerald-400">R$ {finHoje.totalEntradas.toFixed(2)}</div>
+                                            <div className="text-[8px] text-slate-400 uppercase">Vendas: R$ {finHoje.vendas.toFixed(2)}</div>
+                                            <div className="text-[8px] text-slate-400 uppercase">Recebido Fiado: R$ {finHoje.recebidoFiado.toFixed(2)}</div>
+                                        </div>
+                                        <div className="space-y-1 text-right">
+                                            <div className="text-[9px] font-black text-slate-500 uppercase">Saídas</div>
+                                            <div className="text-lg font-black text-red-500">R$ {finHoje.saidas.toFixed(2)}</div>
+                                            <div className="text-[8px] text-slate-400 uppercase italic">Insumos/Gastos</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="bg-slate-950 p-3 rounded-2xl flex justify-between items-center border border-slate-800">
+                                        <span className="text-[9px] font-black text-yellow-600 uppercase italic">Novos Fiados Gerados:</span>
+                                        <span className="text-xs font-black text-yellow-600">R$ {finHoje.fiadoGerado.toFixed(2)}</span>
                                     </div>
                                 </div>
+
                                 <div className="space-y-2">
-                                    {historicoFinanceiro.filter(d=>d.data!==new Date().toLocaleDateString('pt-BR')).map(d=>(
-                                        <div key={d.data} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex justify-between items-center"><span className="text-xs font-black text-slate-400 uppercase">{d.data}</span><span className="text-sm font-black text-emerald-500">R$ {d.totalDinheiro.toFixed(2)}</span></div>
+                                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-2">Histórico por Dia</h3>
+                                    {resumoFinanceiroTotal.map((d, i) => (
+                                        <div key={i} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col gap-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-black text-xs text-white uppercase">{d.data}</span>
+                                                <span className={`font-black text-sm ${d.saldoFinal >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                    R$ {d.saldoFinal.toFixed(2)}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-[9px] font-bold uppercase text-slate-500">
+                                                <span>Entradas: <span className="text-emerald-600">R$ {d.totalEntradas.toFixed(2)}</span></span>
+                                                <span>Saídas: <span className="text-red-600">R$ {d.saidas.toFixed(2)}</span></span>
+                                            </div>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
@@ -539,7 +592,7 @@
                             <div className="space-y-4">
                                 <h2 className="text-xl font-black text-orange-500 italic uppercase">Fiado</h2>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800"><div className="text-[9px] font-black text-slate-500 uppercase">TOTAL</div><div className="text-2xl font-black text-green-500 mt-2">R$ {totalParaReceber.toFixed(2)}</div></div>
+                                    <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800"><div className="text-[9px] font-black text-slate-500 uppercase">TOTAL</div><div className="text-2xl font-black text-yellow-500 mt-2">R$ {totalParaReceber.toFixed(2)}</div></div>
                                     <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800"><div className="text-[9px] font-black text-slate-500 uppercase">CLIENTES</div><div className="text-xl font-black text-orange-500 mt-2">{totalClientesPendentes}</div></div>
                                 </div>
                                 <div className="space-y-2">
@@ -596,117 +649,52 @@
                     <nav className="fixed bottom-0 w-full bg-slate-900/95 backdrop-blur-md p-4 border-t border-slate-800 flex gap-2 z-40 overflow-x-auto no-scrollbar">
                         {abasDisponiveis.map(p => (
                             <button key={p} onClick={() => setPagina(p)} className={`flex-none px-6 py-4 rounded-2xl font-black text-[10px] uppercase transition-all ${pagina === p ? 'active-tab' : 'bg-slate-800 text-slate-500'}`}>
-                                {p === 'home' ? 'Mesas' : p === 'financeiro' ? 'Financeiro' : p === 'gastos' ? 'Gastos' : p}
+                                {p === 'home' ? 'Mesas' : p === 'financeiro' ? 'Financeiro' : p === 'gastos' ? 'Gastos' : p === 'notas' ? 'Fiado' : p === 'estoque' ? 'Estoque' : p === 'equipe' ? 'Equipe' : p === 'logs' ? 'Logs' : p}
                             </button>
                         ))}
                     </nav>
 
                     {idMesaAberta && (
-    <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[60] flex items-end">
-        <div className="bg-slate-900 w-full rounded-t-[40px] p-5 border-t border-slate-700 h-[95vh] flex flex-col">
-            
-            {/* CABEÇALHO */}
-            <div className="flex justify-between items-center mb-3">
-                <h2 className="text-2xl font-black text-orange-500 italic uppercase">Mesa {idMesaAberta}</h2>
-                <button 
-                    onClick={() => { setIdMesaAberta(null); setBuscaProduto(''); setCategoriaSelecionada('Todos'); }} 
-                    className="bg-slate-800 w-10 h-10 rounded-full font-bold flex items-center justify-center text-white"
-                >
-                    ✕
-                </button>
-            </div>
-
-            {/* RESUMO DE CONSUMO - Mais compacto para sobrar espaço */}
-            <div className="bg-slate-950 p-3 rounded-2xl mb-3 border border-slate-800 shadow-inner">
-                <div className="max-h-24 overflow-y-auto mb-1 space-y-1 pr-1 custom-scrollbar">
-                    {(mesas[idMesaAberta-1]?.itens || []).map((it, i) => (
-                        <div key={i} className="flex justify-between text-[13px] font-bold uppercase text-slate-400">
-                            <span className="truncate mr-2">{it.produto_nome}</span>
-                            <div className="flex gap-3 items-center shrink-0">
-                                <span>R$ {Number(it.preco_unidade || 0).toFixed(2)}</span>
-                                <button 
-                                    onClick={async () => { await supabaseClient.from('pedidos').delete().eq('id', it.id); buscarDados(); }} 
-                                    className="text-red-500 font-black p-1"
-                                >
-                                    ✕
-                                </button>
+                        <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[60] flex items-end">
+                            <div className="bg-slate-900 w-full rounded-t-[40px] p-5 border-t border-slate-700 h-[95vh] flex flex-col">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h2 className="text-2xl font-black text-orange-500 italic uppercase">Mesa {idMesaAberta}</h2>
+                                    <button onClick={() => { setIdMesaAberta(null); setBuscaProduto(''); setCategoriaSelecionada('Todos'); }} className="bg-slate-800 w-10 h-10 rounded-full font-bold flex items-center justify-center text-white">✕</button>
+                                </div>
+                                <div className="bg-slate-950 p-3 rounded-2xl mb-3 border border-slate-800 shadow-inner">
+                                    <div className="max-h-24 overflow-y-auto mb-1 space-y-1 pr-1 custom-scrollbar">
+                                        {(mesas[idMesaAberta-1]?.itens || []).map((it, i) => (
+                                            <div key={i} className="flex justify-between text-[13px] font-bold uppercase text-slate-400">
+                                                <span className="truncate mr-2">{it.produto_nome}</span>
+                                                <div className="flex gap-3 items-center shrink-0"><span>R$ {Number(it.preco_unidade || 0).toFixed(2)}</span><button onClick={async () => { await supabaseClient.from('pedidos').delete().eq('id', it.id); buscarDados(); }} className="text-red-500 font-black p-1">✕</button></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="text-right text-lg font-black pt-1 border-t border-slate-800 text-white">R$ {(mesas[idMesaAberta-1]?.total || 0).toFixed(2)}</div>
+                                </div>
+                                <div className="mb-3"><input type="text" placeholder="🔍 BUSCAR..." value={buscaProduto} onChange={(e) => setBuscaProduto(e.target.value)} className="w-full bg-slate-800 p-3.5 rounded-xl outline-none text-sm font-bold uppercase border border-slate-700 text-white" /></div>
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 pb-2">
+                                    {categoriasAtendimento.map(cat => (
+                                        <button key={cat.id} onClick={() => setCategoriaSelecionada(cat.id)} className={`flex-none flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase border-2 transition-all ${categoriaSelecionada === cat.id ? 'bg-orange-600 border-orange-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-300'}`}><span className="text-base">{cat.emoji}</span><span>{cat.label}</span></button>
+                                    ))}
+                                </div>
+                                <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-3 mb-4 pr-1 custom-scrollbar">
+                                    {produtos.filter(p => (categoriaSelecionada === 'Todos' || p.categoria === categoriaSelecionada) && p.nome.toLowerCase().includes(buscaProduto.toLowerCase())).map(p => (
+                                        <button key={p.id} onClick={() => adicionarProdutoMesa(p)} className="p-4 bg-slate-800 rounded-2xl text-left border border-slate-700 active:scale-95 flex flex-col justify-between min-h-[80px]">
+                                            <div className="text-[11px] font-black text-white uppercase leading-tight line-clamp-2">{p.nome}</div>
+                                            <div className="flex justify-between items-end"><div className="font-black text-orange-500 text-sm">R$ {Number(p.preco || 0).toFixed(2)}</div><div className="text-[13px] font-bold text-slate-500 uppercase">Est: {p.estoque}</div></div>
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-3 gap-3 pt-2">
+                                    <button onClick={alterarApelido} className="bg-slate-700 p-4 rounded-2xl font-black uppercase text-[11px]">Apelido</button>
+                                    <button onClick={registrarFiado} className="bg-orange-600 p-4 rounded-2xl font-black uppercase text-[11px]">Fiado</button>
+                                    <button onClick={registrarPagamento} className="bg-green-600 p-4 rounded-2xl font-black uppercase text-[11px]">Pagar</button>
+                                </div>
                             </div>
                         </div>
-                    ))}
-                    {(mesas[idMesaAberta-1]?.itens || []).length === 0 && (
-                        <div className="text-[10px] text-slate-600 text-center py-2 uppercase font-bold">Mesa vazia</div>
                     )}
-                </div>
-                <div className="text-right text-lg font-black pt-1 border-t border-slate-800 text-white">
-                    <span className="text-[10px] text-slate-500 mr-2 uppercase">Total:</span>
-                    R$ {(mesas[idMesaAberta-1]?.total || 0).toFixed(2)}
-                </div>
-            </div>
-
-            {/* BUSCA */}
-            <div className="mb-3">
-                <input 
-                    type="text" 
-                    placeholder="🔍 BUSCAR PRODUTO..." 
-                    value={buscaProduto} 
-                    onChange={(e) => setBuscaProduto(e.target.value)} 
-                    className="w-full bg-slate-800 p-3.5 rounded-xl outline-none text-sm font-bold uppercase text-white border border-slate-700 focus:border-orange-500 transition-all" 
-                />
-            </div>
-
-            {/* CATEGORIAS - Com scroll horizontal suave e botões melhores */}
-            <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 pb-2">
-                {categoriasAtendimento.map(cat => (
-                    <button 
-                        key={cat.id} 
-                        onClick={() => setCategoriaSelecionada(cat.id)} 
-                        className={`flex-none flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase border-2 transition-all active:scale-95 ${
-                            categoriaSelecionada === cat.id 
-                            ? 'bg-orange-600 border-orange-400 text-white shadow-lg shadow-orange-600/20' 
-                            : 'bg-slate-800 border-slate-700 text-slate-400'
-                        }`}
-                    >
-                        <span className="text-base">{cat.emoji}</span>
-                        <span>{cat.label}</span>
-                    </button>
-                ))}
-            </div>
-
-            {/* GRID DE PRODUTOS - Ocupando o máximo de espaço central */}
-            <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-3 mb-4 pr-1 custom-scrollbar">
-                {produtos
-                    .filter(p => (categoriaSelecionada === 'Todos' || p.categoria === categoriaSelecionada) && p.nome.toLowerCase().includes(buscaProduto.toLowerCase()))
-                    .map(p => (
-                    <button 
-                        key={p.id} 
-                        onClick={() => adicionarProdutoMesa(p)} 
-                        className="p-4 bg-slate-800 rounded-2xl text-left border border-slate-700 active:bg-slate-700 transition-all flex flex-col justify-between min-h-[80px] shadow-sm"
-                    >
-                        <div className="text-[11px] font-black text-white uppercase leading-tight mb-2 line-clamp-2">
-                            {p.nome}
-                        </div>
-                        <div className="flex justify-between items-end">
-                            <div className="font-black text-orange-500 text-sm">
-                                R$ {Number(p.preco || 0).toFixed(2)}
-                            </div>
-                            <div className="text-[13px] font-bold text-slate-500 uppercase">
-                                Est: {p.estoque}
-                            </div>
-                        </div>
-                    </button>
-                ))}
-            </div>
-
-            {/* AÇÕES FIXAS NO RODAPÉ */}
-            <div className="grid grid-cols-3 gap-3 pt-2">
-                <button onClick={alterarApelido} className="bg-slate-700 hover:bg-slate-600 p-4 rounded-2xl font-black uppercase text-[11px] text-white transition-colors">👤 Apelido</button>
-                <button onClick={registrarFiado} className="bg-orange-600 hover:bg-orange-500 p-4 rounded-2xl font-black uppercase text-[11px] text-white shadow-lg transition-colors">📝 Fiado</button>
-                <button onClick={registrarPagamento} className="bg-green-600 hover:bg-green-500 p-4 rounded-2xl font-black uppercase text-[11px] text-white shadow-lg transition-colors">✅ Pagar</button>
-            </div>
-        </div>
-    </div>
-)}
-
+                    
                     {produtoEditando && (
                         <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[70] flex items-center justify-center p-6">
                             <form onSubmit={async (e) => {
@@ -714,12 +702,12 @@
                                 await supabaseClient.from('produtos').update({ nome: e.target.n.value, preco: e.target.p.value, estoque: e.target.e.value, categoria: e.target.c.value }).eq('id', produtoEditando.id);
                                 setProdutoEditando(null); buscarDados();
                             }} className="bg-slate-900 w-full max-w-sm rounded-[30px] p-6 border border-slate-800 space-y-4">
-                                <h3 className="text-sm font-black uppercase text-orange-500">Editar Produto</h3>
-                                <input name="n" defaultValue={produtoEditando.nome} className="w-full bg-slate-800 p-3 rounded-xl outline-none font-bold text-white uppercase text-sm" />
-                                <div className="grid grid-cols-2 gap-2"><input name="p" type="number" step="0.01" defaultValue={produtoEditando.preco} className="bg-slate-800 p-3 rounded-xl text-sm font-bold text-white" /><input name="e" type="number" defaultValue={produtoEditando.estoque} className="bg-slate-800 p-3 rounded-xl text-sm font-bold text-white" /></div>
-                                <select name="c" defaultValue={produtoEditando.categoria} className="w-full bg-slate-800 p-3 rounded-xl text-sm font-bold uppercase">{categoriasAtendimento.filter(c=>c.id!=='Todos').map(c=>(<option key={c.id} value={c.nome}>{c.nome}</option>))}</select>
-                                <button className="w-full bg-orange-600 p-3.5 rounded-xl font-black uppercase text-xs">Salvar</button>
-                                <button type="button" onClick={() => setProdutoEditando(null)} className="w-full text-slate-500 font-bold text-xs uppercase">Cancelar</button>
+                                <h3 className="text-sm font-black uppercase text-orange-500">Editar</h3>
+                                <input name="n" defaultValue={produtoEditando.nome} className="w-full bg-slate-800 p-3 rounded-xl outline-none font-bold text-white uppercase" />
+                                <div className="grid grid-cols-2 gap-2"><input name="p" step="0.01" type="number" defaultValue={produtoEditando.preco} className="bg-slate-800 p-3 rounded-xl text-white font-bold" /><input name="e" type="number" defaultValue={produtoEditando.estoque} className="bg-slate-800 p-3 rounded-xl text-white font-bold" /></div>
+                                <select name="c" defaultValue={produtoEditando.categoria} className="w-full bg-slate-800 p-3 rounded-xl text-white font-bold uppercase">{categoriasAtendimento.filter(c=>c.id!=='Todos').map(c=>(<option key={c.id} value={c.nome}>{c.nome}</option>))}</select>
+                                <button className="w-full bg-orange-600 p-3.5 rounded-xl font-black uppercase">Salvar</button>
+                                <button type="button" onClick={() => setProdutoEditando(null)} className="w-full text-slate-500 font-bold uppercase text-xs">Cancelar</button>
                             </form>
                         </div>
                     )}
